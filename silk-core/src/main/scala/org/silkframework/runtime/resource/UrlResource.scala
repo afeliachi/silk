@@ -1,7 +1,7 @@
 package org.silkframework.runtime.resource
 
 import java.io.{FileNotFoundException, InputStream}
-import java.net.{URLConnection, UnknownHostException, URL}
+import java.net.{URL, URLConnection, UnknownHostException}
 
 
 /**
@@ -36,6 +36,10 @@ case class UrlResource(url: URL, connectTimeout: Option[Int] = Some(5000), readT
     )
   }
 
+  override def size = None
+
+  override def modificationTime = None
+
   private def handleStream[T](handleStreamFN: InputStream => T, failValue: T): T = {
     var is: InputStream = null
     try {
@@ -64,4 +68,6 @@ case class UrlResource(url: URL, connectTimeout: Option[Int] = Some(5000), readT
    * The path of this resource.
    */
   override def path: String = url.getPath
+
+  override def toString = url.toString
 }

@@ -7,11 +7,13 @@
 *.ipr
 *.iws
 #eclipse
+bin/
 target/
 */.gitignore
 .classpath
 .project
 .settings
-.cache
+.cache*
 **/.idea
 myScripts
+scripts

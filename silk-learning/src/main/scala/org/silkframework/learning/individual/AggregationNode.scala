@@ -14,7 +14,10 @@
 
 package org.silkframework.learning.individual
 
-import org.silkframework.rule.similarity.{Aggregator, Aggregation}
+import org.silkframework.config.Prefixes
+import org.silkframework.rule.similarity.{Aggregation, Aggregator}
+import org.silkframework.runtime.resource.EmptyResourceManager
+import org.silkframework.util.IdentifierGenerator
 
 case class AggregationNode(aggregation: String, weight: Int, required: Boolean, operators: List[OperatorNode]) extends OperatorNode {
   override val children = operators
@@ -23,12 +26,13 @@ case class AggregationNode(aggregation: String, weight: Int, required: Boolean, 
     AggregationNode(aggregation, weight, required, children.map(_.asInstanceOf[OperatorNode]))
   }
 
-  def build: Aggregation = {
+  def build(implicit identifiers: IdentifierGenerator): Aggregation = {
     Aggregation(
+      identifiers.generate(aggregation),
       required = required,
       weight = weight,
       operators = operators.map(_.build),
-      aggregator = Aggregator(aggregation, Map.empty)
+      aggregator = Aggregator(aggregation, Map.empty)(Prefixes.empty, EmptyResourceManager)
     )
   }
 }

@@ -5,13 +5,13 @@
 @import org.silkframework.entity.Entity
 @import org.silkframework.util.DPair
 @import org.silkframework.rule.evaluation._
-@import org.silkframework.config.LinkSpecification
 @import controllers.rules.routes.Assets
-@import org.silkframework.workspace.Task
-@import org.silkframework.execution.LinkingStatistics
+@import org.silkframework.workspace.ProjectTask
+@import org.silkframework.rule.execution.LinkingStatistics
+@import org.silkframework.rule.LinkSpec
 
 @(project: Project,
-  task: Task[LinkSpecification],
+  task: ProjectTask[LinkSpec],
   links: Seq[EvalLink],
   linkingStatistics: Option[LinkingStatistics],
   sorting: LinkSorter,
@@ -29,7 +29,7 @@
 
 @render(getPageLinks())
 @for(statistics <- linkingStatistics) {
-  @renderStatistics(statistics)
+  @linkingReport(statistics, links.size)
 }
 
 @render(pageLinks: Seq[EvalLink]) = {
@@ -46,7 +46,7 @@
           @sortableHeader(SourceUriSorterAscending, SourceUriSorterDescending) {
             Source:
             <span class="source-value">
-              @task.data.dataSelections.source.datasetId
+              @task.data.dataSelections.source.inputId
             </span>
           }
         </div>
@@ -55,7 +55,7 @@
           @sortableHeader(TargetUriSorterAscending, TargetUriSorterDescending) {
           Target:
               <span class="source-value">
-                @task.data.dataSelections.target.datasetId
+                @task.data.dataSelections.target.inputId
               </span>
           }
         </div>
@@ -127,7 +127,10 @@
         @link.details.map { sim =>
           @renderConfidence(sim.score)
         }.getOrElse {
-          <div class="confidencebar">Missing</div>
+          <div id="@id(link, "missing")" class="confidencebar">Missing</div>
+          <div class="mdl-tooltip" for="@id(link, "missing")">
+            The cache does not provide all values for the linked entities. Try reloading the cache and this page.
+          </div>
         }
       </div>
 
@@ -180,7 +183,7 @@
       @project.config.prefixes.shorten(entity.uri)
     </span>
     <ul>
-      @for((path, index) <- entity.desc.paths.zipWithIndex) {
+      @for((path, index) <- entity.desc.typedPaths.map(_.path).zipWithIndex) {
         @renderValues(path, entity.evaluate(index), divClassPrefix)
       }
     </ul>
@@ -230,7 +233,7 @@
 }}
 
 @renderValue(value: Value, divClassPrefix: String) = { @value match {
-  case TransformedValue(transform, values, children) => {
+  case TransformedValue(transform, values, children, error) => {
     <li>
       <span class="input">
         Transform: @transform.transformer.plugin.id (@transform.id)
@@ -241,15 +244,25 @@
       </ul>
     </li>
   }
-  case InputValue(input, values) => {
+  case InputValue(input, values, error) => {
     <li>
       <span class="input">
         Input: @input.path.serializeSimplified(project.config.prefixes) (@input.id)
-        @values.map(v => <span class={divClassPrefix + "-value"}>{v}</span>)
+        @for(v <- values) {
+          <span class="@(divClassPrefix)-value">@convertToLinkIfDetected(v)</span>
+        }
       </span>
     </li>
   }
 }}
+
+@convertToLinkIfDetected(valueString: String) = {
+  @if(valueString.startsWith("http://") || valueString.startsWith("https://")) {
+    <a target="_blank" href="@valueString">@valueString</a>
+  } else {
+    @valueString
+  }
+}
 
 @renderConfidence(value: Option[Double]) = { @value match {
   case Some(v) => {
@@ -262,26 +275,4 @@
 
 @id(link: EvalLink, prefix: String = "") = @{
   prefix + link.hashCode
-}
-
-@renderStatistics(statistics: LinkingStatistics) = {
-  <div class="linkingStatistics">
-    <div class="linkingStatisticsHeader">
-      Linking Statistics
-    </div>
-    <table>
-      <tr>
-        <td>Number of source entities:</td>
-        <td>@statistics.entityCount.source</td>
-      </tr>
-      <tr>
-        <td>Number of target entities:</td>
-        <td>@statistics.entityCount.target</td>
-      </tr>
-      <tr>
-        <td>Number of links:</td>
-        <td>@links.size</td>
-      </tr>
-    </table>
-  </div>
 }

@@ -1,0 +1,37 @@
+@(project: String, task: String, dependentTasks: Seq[String])
+
+@if(dependentTasks.isEmpty) {
+
+  @widgets.dialog(title = "Delete task", submitLabel = "Yes, delete it") {
+    <p>
+      Delete task: <span class="delete-dialog-resource">@task</span>
+    </p>
+
+    <script>//<![CDATA[
+      function submit() {
+        deleteTask('@project', '@task');
+        closeDialog();
+      }
+    //]]></script>
+  }
+
+} else {
+
+  @widgets.dialog(title = "Cannot delete task", submitLabel = "Ok") {
+    <p>
+      Cannot delete task <span class="delete-dialog-resource">@task</span>, because the following tasks depend on it:
+      <ul>
+      @for(dependentTask <- dependentTasks) {
+        <li>@dependentTask</li>
+      }
+      </ul>
+    </p>
+
+    <script>//<![CDATA[
+      function submit() {
+        closeDialog();
+      }
+    //]]></script>
+  }
+
+}

@@ -14,10 +14,9 @@
 
 package org.silkframework.cache
 
-import org.silkframework.entity.rdf.SparqlEntitySchema
+import org.silkframework.entity.{Entity, EntitySchema, Index}
 
-import xml.Node
-import org.silkframework.entity.{EntitySchema, Index, Entity}
+import scala.xml.Node
 
 /**
  * A cache of entities.
@@ -36,12 +35,7 @@ trait EntityCache {
   /**
    * Writes to this cache.
    */
-  def write(entities: Traversable[Entity])
-
-  /**
-   * True, if the cache is being written at the moment.
-   */
-  def isWriting: Boolean
+  def write(entity: Entity): Unit
 
   /**
    * Reads a partition of a block.
@@ -122,6 +116,7 @@ trait EntityCache {
       }
     }
 
-    write(entities)
+    for(entity <- entities)
+      write(entity)
   }
 }

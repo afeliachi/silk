@@ -1,27 +1,37 @@
 package org.silkframework.workspace
 
 import org.silkframework.runtime.plugin.PluginModule
-import org.silkframework.workspace.activity.dataset.TypesCacheFactory
+import org.silkframework.workspace.activity.dataset.Types.TypesFormat
+import org.silkframework.workspace.activity.dataset.{Types, TypesCacheFactory}
 import org.silkframework.workspace.activity.linking._
-import org.silkframework.workspace.activity.transform.{TransformPathsCacheFactory, ExecuteTransformFactory}
-import org.silkframework.workspace.activity.workflow.WorkflowExecutorFactory
-import org.silkframework.workspace.xml.FileWorkspaceProvider
+import org.silkframework.workspace.activity.transform.{ExecuteTransformFactory, TransformPathsCacheFactory, VocabularyCache, VocabularyCacheFactory}
+import org.silkframework.workspace.activity.workflow.{LocalWorkflowExecutorFactory, OldWorkflowExecutorFactory, WorkflowExecutionReportJsonFormat}
+import org.silkframework.workspace.xml.{FileWorkspaceProvider, XmlZipProjectMarshaling}
+
+import scala.language.existentials
 
 class WorkspacePlugins extends PluginModule {
 
   override def pluginClasses: Seq[Class[_]] =
-    classOf[FileWorkspaceProvider] ::
+    workspaceProviders :::
     datasetActivities :::
     transformActivities :::
     linkingActivities :::
-    workflowActivities
+    workflowActivities :::
+    projectMarshaller :::
+    formats
+
+  def workspaceProviders: List[Class[_]] =
+    classOf[FileWorkspaceProvider] ::
+    classOf[InMemoryWorkspaceProvider] :: Nil
 
   def datasetActivities: List[Class[_]] =
     classOf[TypesCacheFactory] :: Nil
 
   def transformActivities: List[Class[_]] =
     classOf[ExecuteTransformFactory] ::
-    classOf[TransformPathsCacheFactory] :: Nil
+    classOf[TransformPathsCacheFactory] ::
+    classOf[VocabularyCacheFactory] :: Nil
 
   def linkingActivities: List[Class[_]] =
     classOf[GenerateLinksFactory] ::
@@ -31,5 +41,16 @@ class WorkspacePlugins extends PluginModule {
     classOf[ReferenceEntitiesCacheFactory] :: Nil
 
   def workflowActivities: List[Class[_]] =
-    classOf[WorkflowExecutorFactory] :: Nil
+    classOf[LocalWorkflowExecutorFactory] ::
+    classOf[OldWorkflowExecutorFactory] :: Nil
+
+  def formats = {
+    TypesFormat.getClass ::
+    VocabularyCache.ValueFormat.getClass ::
+    classOf[WorkflowExecutionReportJsonFormat] :: Nil
+  }
+
+  def projectMarshaller = {
+    classOf[XmlZipProjectMarshaling] :: Nil
+  }
 }

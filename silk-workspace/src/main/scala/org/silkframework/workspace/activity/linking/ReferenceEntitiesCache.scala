@@ -2,28 +2,27 @@ package org.silkframework.workspace.activity.linking
 
 import java.util
 
-import org.silkframework.config.LinkSpecification
-import org.silkframework.dataset.{DataSource, Dataset}
-import org.silkframework.entity.rdf.SparqlEntitySchema
-import org.silkframework.entity.{EntitySchema, Entity, Link}
-import org.silkframework.evaluation.ReferenceEntities
+import org.silkframework.dataset.DataSource
+import org.silkframework.entity.{Entity, EntitySchema, Link}
 import org.silkframework.runtime.activity.{Activity, ActivityContext}
-import org.silkframework.util.{Uri, DPair}
-import org.silkframework.workspace.Project
-import org.silkframework.workspace.Task
-import scala.collection.JavaConverters
-import JavaConverters._
+import org.silkframework.util.{DPair, Uri}
+import org.silkframework.workspace.ProjectTask
+import LinkingTaskUtils._
+import org.silkframework.rule.LinkSpec
+import org.silkframework.rule.evaluation.ReferenceEntities
+
+import scala.collection.JavaConverters._
 
 
 /**
  * For each reference link, the reference entities cache holds all values of the linked entities.
  */
-class ReferenceEntitiesCache(task: Task[LinkSpecification]) extends Activity[ReferenceEntities] {
+class ReferenceEntitiesCache(task: ProjectTask[LinkSpec]) extends Activity[ReferenceEntities] {
 
   @volatile
   private var canceled = false
 
-  override def name = s"Entities cache ${task.name}"
+  override def name = s"Entities cache ${task.id}"
 
   override def initialValue = Some(ReferenceEntities.empty)
 
@@ -31,16 +30,22 @@ class ReferenceEntitiesCache(task: Task[LinkSpecification]) extends Activity[Ref
     canceled = true
   }
 
+  override def reset(): Unit = {
+    val pathsCache = task.activity[LinkingPathsCache].control
+    pathsCache.reset()
+    pathsCache.start()
+  }
+
   override def run(context: ActivityContext[ReferenceEntities]) = {
     canceled = false
     context.status.update("Waiting for paths cache", 0.0)
     val pathsCache = task.activity[LinkingPathsCache].control
-    while (pathsCache.status().isRunning && !canceled)
-      Thread.sleep(1000)
+    pathsCache.waitUntilFinished()
+
     if (pathsCache.status().failed)
-      throw new Exception(s"Cannot load reference entities cache for ${task.name}, because the paths cache could not be loaded.")
-    if (!Option(pathsCache.value()).exists(ed => ed.source.paths.nonEmpty || ed.target.paths.nonEmpty))
-      context.log.info(s"Could not load reference entities cache for ${task.name} as that paths cache does not define paths.")
+      throw new Exception(s"Cannot load reference entities cache for ${task.id}, because the paths cache could not be loaded.")
+    if (!Option(pathsCache.value()).exists(ed => ed.source.typedPaths.nonEmpty || ed.target.typedPaths.nonEmpty))
+      context.log.info(s"Could not load reference entities cache for ${task.id} as that paths cache does not define paths.")
     else {
       val entityLoader = new EntityLoader(context, pathsCache.value())
       entityLoader.load()
@@ -49,7 +54,7 @@ class ReferenceEntitiesCache(task: Task[LinkSpecification]) extends Activity[Ref
 
   private class EntityLoader(context: ActivityContext[ReferenceEntities], entityDescs: DPair[EntitySchema]) {
 
-    private val sources = task.data.dataSelections.map(ds => task.project.task[Dataset](ds.datasetId).data.source)
+    private val sources = task.dataSources
 
     private val linkSpec = task.data
 
@@ -65,30 +70,48 @@ class ReferenceEntitiesCache(task: Task[LinkSpecification]) extends Activity[Ref
         context.value().unlabeledLinkToEntities
       )
 
+      val cache = context.value()
+      var sourceEntities = Map[String, Entity]()
+      var targetEntities = Map[String, Entity]()
+
       val sourceEntityUrisNeedingUpdate = new util.HashSet[String]()
       val targetEntityUrisNeedingUpdate = new util.HashSet[String]()
       for ((links, loadLinkFn) <- links.zip(loadLinkEntitiesFNs) if !canceled) {
         for (link <- links if !canceled) {
           if (Thread.currentThread.isInterrupted) throw new InterruptedException()
-          for (l <- loadLink(link, loadLinkFn)) {
-            collectEntitiesNeedingUpdate(sourceEntityUrisNeedingUpdate, l.source, entityDescs.source)
-            collectEntitiesNeedingUpdate(targetEntityUrisNeedingUpdate, l.target, entityDescs.target)
+          // Find existing source entity
+          val existingSourceEntity = cache.sourceEntities.get(link.source).orElse(link.entities.map(_.source))
+          existingSourceEntity match {
+            case Some(entity) if entityMatchesDescription(entity, entityDescs.source) =>
+              sourceEntities += ((entity.uri, entity))
+            case _ =>
+              sourceEntityUrisNeedingUpdate.add(link.source)
+          }
+          // Find existing target entity
+          val existingTargetEntity = cache.targetEntities.get(link.target).orElse(link.entities.map(_.target))
+          existingTargetEntity match {
+            case Some(entity) if entityMatchesDescription(entity, entityDescs.target) =>
+              targetEntities += ((entity.uri, entity))
+            case None =>
+              targetEntityUrisNeedingUpdate.add(link.target)
           }
         }
       }
-      val sourceEntities: Map[String, Entity] = getSourceEntities(sourceEntityUrisNeedingUpdate)
-      context.status.update(0.5 * 0.5)
-      val targetEntities: Map[String, Entity] = getTargetEntities(targetEntityUrisNeedingUpdate)
-      context.status.update(0.5)
 
-      // Add new entities to reference entities
-      context.value() = context.value().update(
-        sourceEntities.values,
-        targetEntities.values,
-        positive,
-        negative,
-        unlabeled
-      )
+      sourceEntities ++= getSourceEntities(sourceEntityUrisNeedingUpdate)
+      context.status.updateProgress(0.5)
+      targetEntities ++= getTargetEntities(targetEntityUrisNeedingUpdate)
+      context.status.updateProgress(0.99)
+
+      // Update reference entities
+      context.value() =
+        ReferenceEntities(
+          sourceEntities,
+          targetEntities,
+          positive,
+          negative,
+          unlabeled
+        )
     }
 
     private def getSourceEntities(sourceEntityUrisNeedingUpdate: util.HashSet[String]): Map[String, Entity] = {
@@ -103,27 +126,6 @@ class ReferenceEntitiesCache(task: Task[LinkSpecification]) extends Activity[Ref
         targetEntityUrisNeedingUpdate.asScala.toSeq,
         entityDescs.target,
         sources.target)
-    }
-
-    private def collectEntitiesNeedingUpdate(entities: util.HashSet[String],
-                                             entity: Entity,
-                                             entityDescription: EntitySchema): Unit = {
-      if (entityMatchesDescription(entity, entityDescription)) {
-        entities.add(entity.uri)
-      }
-    }
-
-    private def loadLink(link: Link,
-                         loadLinkEntities: Link => Option[DPair[Entity]]): Option[DPair[Entity]] = {
-      link.entities match {
-        case Some(entities) => Some(entities)
-        case None => {
-          loadLinkEntities(link) match {
-            case None => retrieveEntityPair(link)
-            case Some(entityPair) => updateEntityPair(entityPair)
-          }
-        }
-      }
     }
 
     private def retrieveEntityPair(uris: DPair[String]): Option[DPair[Entity]] = {
@@ -157,24 +159,25 @@ class ReferenceEntitiesCache(task: Task[LinkSpecification]) extends Activity[Ref
         None
       } else {
         //Compute the paths which are missing on the given entity
-        val existingPaths = entity.desc.paths.toSet
-        val missingPaths = entityDesc.paths.filterNot(existingPaths.contains)
+        val existingPaths = entity.desc.typedPaths.toSet
+        val missingPaths = entityDesc.typedPaths.filterNot(existingPaths.contains)
 
         //Retrieve an entity with all missing paths
         val missingEntity =
           source.retrieveByUri(
-            entitySchema = entity.desc.copy(paths = missingPaths),
+            entitySchema = entity.desc.copy(typedPaths = missingPaths),
             entities = entity.uri :: Nil
           ).head
 
         //Collect values from the existing and the new entity
         val completeValues =
-          for (path <- entityDesc.paths) yield {
-            val pathIndex = entity.desc.paths.indexOf(path)
-            if (pathIndex != -1)
+          for (path <- entityDesc.typedPaths) yield {
+            val pathIndex = entity.desc.typedPaths.indexOf(path)
+            if (pathIndex != -1) {
               entity.evaluate(pathIndex)
-            else
-              missingEntity.evaluate(path)
+            } else {
+              missingEntity.evaluate(path.path)
+            }
           }
 
         //Return the updated entity
@@ -193,11 +196,11 @@ class ReferenceEntitiesCache(task: Task[LinkSpecification]) extends Activity[Ref
         entitySchema = entityDesc,
         entities = entityUris map Uri.apply
       )
-      entities map { e => (e.uri, e)} toMap
+      entities.map{ e => (e.uri, e)}.toMap
     }
 
     private def entityMatchesDescription(entity: Entity, entityDesc: EntitySchema): Boolean = {
-      entity.desc.paths == entityDesc.paths
+      entity.desc.typedPaths == entityDesc.typedPaths
     }
   }
 }

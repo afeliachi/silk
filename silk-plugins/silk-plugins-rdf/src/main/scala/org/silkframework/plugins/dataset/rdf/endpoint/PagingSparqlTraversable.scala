@@ -1,10 +1,9 @@
 package org.silkframework.plugins.dataset.rdf.endpoint
 
 import java.io.IOException
-import java.util.logging.{Logger, Level}
+import java.util.logging.{Level, Logger}
 
 import org.silkframework.dataset.rdf._
-import org.silkframework.plugins.dataset.rdf.SparqlParams
 
 import scala.collection.immutable.SortedMap
 import scala.xml.{Elem, NodeSeq}
@@ -60,7 +59,7 @@ object PagingSparqlTraversable {
 
       val uris = for (binding <- bindings; node <- binding \ "uri") yield ((binding \ "@name").text, Resource(node.text))
 
-      val literals = for (binding <- bindings; node <- binding \ "literal") yield ((binding \ "@name").text, Literal(node.text))
+      val literals = for (binding <- bindings; node <- binding \ "literal") yield ((binding \ "@name").text, PlainLiteral(node.text))
 
       val bnodes = for (binding <- bindings; node <- binding \ "bnode") yield {
         blankNodeCount += 1

@@ -22,6 +22,9 @@ import scala.util.matching.Regex
  * Represents a SPARQL restriction.
  */
 class SparqlRestriction private(val variable: String, restrictionsFull: String, restrictionsQualified: String) extends Serializable {
+  // Check if the restriction contains the variable
+  require(restrictionsQualified.trim.isEmpty || restrictionsQualified.contains("?" + variable),
+    s"SPARQL restriction '$restrictionsQualified' does not use variable ?$variable and thus has no effect. Use ?$variable for restrictions on entities.")
 
   def toSparql = restrictionsFull
 
@@ -52,13 +55,14 @@ object SparqlRestriction {
     var restrictionsFull = cleanedRestrictions
     var restrictionsQualified = cleanedRestrictions
     for ((id, namespace) <- prefixes.toSeq.sortBy(_._1.length).reverse) {
-      restrictionsFull = restrictionsFull.replaceAll(" " + id + ":" + "([^\\s\\{\\}+*]+)([+*]*\\s+\\.)?", " <" + namespace + "$1>$2")
+      // Replace prefixes in properties and types
+      restrictionsFull = restrictionsFull.replaceAll("([\\s^])" + id + ":" + "([^\\s\\{\\}+*]+)([+*]*\\s+\\.)?", "$1<" + namespace + "$2>$3")
       restrictionsQualified = restrictionsQualified.replaceAll("<" + namespace + "([^>]+)>", id + ":" + "$1")
     }
 
     //Check if a prefix is missing
-    val missingPrefixes = new Regex("[\\s\\{\\}][^<\\s\\{\\}]+:").findAllIn(restrictionsFull)
-    if (!missingPrefixes.isEmpty) {
+    val missingPrefixes = new Regex("[\\s\\{\\}][^<\\s\\{\\}\"]+:").findAllIn(restrictionsFull)
+    if (missingPrefixes.nonEmpty) {
       throw new IllegalArgumentException("The following prefixes are not defined: " + missingPrefixes.mkString(","))
     }
 

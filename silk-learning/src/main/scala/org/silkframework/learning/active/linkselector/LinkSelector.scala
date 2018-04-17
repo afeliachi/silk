@@ -15,13 +15,12 @@
 package org.silkframework.learning.active.linkselector
 
 import org.silkframework.entity.Link
-import org.silkframework.evaluation.ReferenceEntities
+import org.silkframework.rule.evaluation.ReferenceEntities
 
 /**
  * Selects a link from the unlabeled pool for evaluation by the user.
  * An implementation should select the most informative links e.g. the links for which the current linkage rules are most uncertain.
  */
-//TODO rename to query strategy?
 trait LinkSelector {
   /**
    * Selects a link from the unlabeled pool for evaluation by the user.

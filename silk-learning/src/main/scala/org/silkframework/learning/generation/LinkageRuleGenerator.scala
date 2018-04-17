@@ -14,10 +14,11 @@
 
 package org.silkframework.learning.generation
 
-import util.Random
-import org.silkframework.learning.individual.{LinkageRuleNode, AggregationNode}
-import org.silkframework.evaluation.ReferenceEntities
 import org.silkframework.learning.LearningConfiguration.Components
+import org.silkframework.learning.individual.{AggregationNode, LinkageRuleNode}
+import org.silkframework.rule.evaluation.ReferenceEntities
+
+import scala.util.Random
 
 case class LinkageRuleGenerator(comparisonGenerators: IndexedSeq[ComparisonGenerator], components: Components) {
   //require(!comparisonGenerators.isEmpty, "comparisonGenerators must not be empty")
@@ -80,7 +81,7 @@ object LinkageRuleGenerator {
     if(es.isEmpty)
       new LinkageRuleGenerator(IndexedSeq.empty, components)
     else {
-      val paths = es.head.map(_.desc.paths)
+      val paths = es.head.map(_.desc.typedPaths.map(_.path))
       new LinkageRuleGenerator((new CompatiblePathsGenerator(components).apply(entities, components.compatibleOnly) ++ new PatternGenerator(components).apply(paths)).toIndexedSeq, components)
     }
   }

@@ -14,27 +14,16 @@
 
 package org.silkframework.plugins.dataset.rdf.formatters
 
-import org.silkframework.entity.Link
-import org.silkframework.util.StringUtils.DoubleLiteral
+import org.silkframework.entity.{Link, ValueType}
+import org.silkframework.plugins.dataset.rdf.RdfFormatUtil
 
 case class NTriplesLinkFormatter() extends LinkFormatter with EntityFormatter {
 
-  override def format(link: Link, predicateUri: String) = {
-    "<" + link.source + ">  <" + predicateUri + ">  <" + link.target + "> .\n"
+  override def format(link: Link, predicateUri: String): String = {
+    "<" + link.source + "> <" + predicateUri + "> <" + link.target + "> .\n"
   }
 
-  override def formatLiteralStatement(subject: String, predicate: String, value: String) = {
-    value match {
-      // Check if value is an URI
-      case v if value.startsWith("http:") || value.startsWith("https:") =>
-        "<" + subject + "> <" + predicate + "> <" + v + "> .\n"
-      // Check if value is a number
-      case DoubleLiteral(d) =>
-        "<" + subject + "> <" + predicate + "> \"" + d + "\"^^<http://www.w3.org/2001/XMLSchema#double> .\n"
-      // Write string values
-      case _ =>
-        val escapedValue = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-        "<" + subject + "> <" + predicate + "> \"" + escapedValue + "\" .\n"
-    }
+  override def formatLiteralStatement(subject: String, predicate: String, value: String, valueType: ValueType): String = {
+    RdfFormatUtil.tripleValuesToNTriplesSyntax(subject, predicate, value, valueType)
   }
 }

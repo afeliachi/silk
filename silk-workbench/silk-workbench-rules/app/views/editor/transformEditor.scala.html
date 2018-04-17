@@ -1,9 +1,11 @@
 @import plugins.Context
-@import org.silkframework.config.TransformSpecification
-@import org.silkframework.rule.TransformRule
+@import org.silkframework.rule.{TransformRule, TransformSpec}
 @import controllers.rules.routes.Assets
+@import controllers.core.routes.{Assets => CoreAssets}
+@import org.silkframework.entity.ValueType
+@import org.silkframework.runtime.serialization.XmlSerialization.toXml
 
-@(context: Context[TransformSpecification], rule: TransformRule)
+@(context: Context[TransformSpec], rule: TransformRule)(implicit session: play.api.mvc.Session)
 
 @import org.silkframework.workspace.User
 @import org.silkframework.rule.input.Transformer
@@ -14,36 +16,91 @@
   <link type="text/css" href="@Assets.at("stylesheets/editor/status.css")" rel="stylesheet" />
 
   <script type="text/javascript" src="@Assets.at("js/excanvas.js")"></script>
-  <script type="text/javascript" src="@Assets.at("js/jquery.jsPlumb-1.5.5.js")"></script>
+  <script type="text/javascript" src="@CoreAssets.at("libs/jsplumb/jsPlumb-2.1.7.js")"></script>
   <script type="text/javascript" src="@Assets.at("js/editor/editor.js")"></script>
   <script type="text/javascript" src="@Assets.at("js/editor/status.js")"></script>
   <script type="text/javascript" src="@Assets.at("js/editor/serializeRule.js")"></script>
+  <script type="text/javascript" src="@Assets.at("js/editor/editableLabel.js")"></script>
 
   <script type="text/javascript">
+    var inEditorEnv = true;
     var projectName = '@context.project.name';
-    var taskName = '@context.task.name';
-    var ruleIndex = '/@context.task.data.rules.indexOf(rule)';
+    var taskName = '@context.task.id';
+    var ruleIndex = '/@rule.id.toString';
     var editorUrl = baseUrl + '/transform/' + projectName + '/' + taskName + '/editor';
-    var apiUrl = '@config.baseUrl/transform/tasks/@context.project.name/@context.task.name';
+    var apiUrl = '@config.baseUrl/transform/tasks/@context.project.name/@context.task.id';
     var serializationFunction = serializeTransformRule;
+  </script>
+
+  @** As the editor does not manage the meta data, we just hold it and attach it to updated rules. **@
+  <script id="rule-metadata" type="text/xml">
+    @toXml(rule.metaData)
   </script>
 }
 
 @toolbar = {
-  <script type="text/javascript" src="@Assets.at("js/wz_tooltip.js")"></script>
-
   <ul>
     <li>
-      <a class="button" href="../editor">Back</a>
+      <a class="mdl-button mdl-js-button mdl-button--icon" href="../editor/rule/@rule.id">
+        <i class="material-icons">arrow_back</i>
+      </a>
     </li>
     <li>
-      <button id="undo" onclick="undo();">Undo</button>
+      <div class="spacer"/>
     </li>
     <li>
-      <button id="redo" onclick="redo();">Redo</button>
+      <button id="undo" class="mdl-button mdl-js-button mdl-button--icon" onclick="undo();">
+        <i class="material-icons">undo</i>
+      </button>
     </li>
     <li>
-      <a class="button" href="http://www.assembla.com/spaces/silk/wiki/Linkage_Rule_Editor" target="_help">Help</a>
+      <button id="redo" class="mdl-button mdl-js-button mdl-button--icon" onclick="redo();">
+        <i class="material-icons">redo</i>
+      </button>
+    </li>
+    <li>
+      <div class="spacer"/>
+    </li>
+      <li>
+      <button id="button_reload_paths" class="mdl-button mdl-js-button mdl-button--icon" onclick="reloadPropertyPaths();">
+        <i class="material-icons">cached</i>
+      </button>
+      <div class="mdl-tooltip mdl-tooltip--large" for="button_reload_paths">
+        Reload Property Paths
+      </div>
+    </li>
+    <li>
+      <div class="spacer"/>
+    </li>
+    <li>
+      <label>Name:</label>
+      <div id="input_rulename" class="mdl-textfield mdl-js-textfield">
+        <input id="rulename" class="mdl-textfield__input" type="text" onchange="modifyLinkSpec()" value="@rule.id" />
+      </div>
+      <div class="mdl-tooltip mdl-tooltip--large" for="input_rulename">
+        The name of this transformation rule.
+      </div>
+    </li>
+    <li>
+      <div class="spacer"/>
+    </li>
+    <li>
+      <label>Target Property:</label>
+      <div id="input_targetproperty" class="mdl-textfield mdl-js-textfield">
+        <input id="targetproperty" class="mdl-textfield__input" type="text" onchange="modifyLinkSpec()" value="@rule.target.map(_.propertyUri.serialize(context.project.config.prefixes)).getOrElse("")" />
+      </div>
+      <div class="mdl-tooltip mdl-tooltip--large" for="input_targetproperty">
+        The target property.
+      </div>
+    </li>
+    <li>
+      <label>Target Type:</label>
+      <div id="input_type" class="mdl-textfield mdl-js-textfield">
+        <input id="targettype" class="mdl-textfield__input" type="text" onchange="modifyLinkSpec()" value="@rule.target.map(t => ValueType.valueTypeId(t.valueType)).getOrElse("AutoDetectValueType")" disabled/>
+      </div>
+      <div class="mdl-tooltip mdl-tooltip--large" for="input_type">
+        The target type.
+      </div>
     </li>
   </ul>
 
@@ -53,21 +110,21 @@
 }
 
 @content = {
-  <div class="draggables">
-    <div style="width:200px;">
-      <span style="font-weight: bold; color: #582271; float: left;">Property Paths</span>
-      <div id="refresh" onclick="reloadPropertyPaths();" title="refresh property paths"></div>
-    </div>
-    <div style="clear: both"></div>
-    <div id="paths">
-      <div id="loading" style="width:230px;">loading ...</div>
-      <script type="text/javascript">
-        getPropertyPaths();
-      </script>
+  <div class="draggables mdl-shadow--2dp">
+    <div class="palette-header">
     </div>
 
-    <div id="operators">
-      @operators("Transformations", "transform", Transformer.pluginsByCategory)
+    <div id="operators-grouped">
+      <div id="paths">
+        <div id="loading" style="width:230px;">loading ...</div>
+        <script type="text/javascript">
+          getPropertyPaths('#paths');
+        </script>
+      </div>
+
+      <div id="operators">
+        @operators("Transformations", "transform", Transformer.pluginsByCategory, context.project)
+      </div>
     </div>
   </div>
 
@@ -75,23 +132,11 @@
 
     <div class="droppable_outer">
 
-      <div id="droppable">
+      <div id="droppable" class="mdl-shadow--2dp">
         @renderRule(
           rule = rule.operator,
-          prefixes = context.project.config.prefixes
+          project = context.project
         )
-      </div>
-
-      <div style="float: left; margin-right: 20px">
-        Name:
-        <input type="text" size="40" id="rulename"  value="@rule.name" />
-        <img src="@Assets.at("img/help.png")" title="The name of this transformation rule." />
-      </div>
-
-      <div style="float: left;">
-        Target Property:
-        <input type="text" size="40" id="targetproperty"  value="@rule.target.map(_.serialize(context.project.config.prefixes)).getOrElse("")" />
-        <img src="@Assets.at("img/help.png")" title="The target property." />
       </div>
 
     </div>

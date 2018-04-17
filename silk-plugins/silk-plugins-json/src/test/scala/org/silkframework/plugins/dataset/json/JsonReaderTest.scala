@@ -14,39 +14,44 @@
 
 package org.silkframework.plugins.dataset.json
 
+import org.scalatest.{FlatSpec, Matchers}
 import org.silkframework.entity.Path
 import org.silkframework.runtime.resource.ClasspathResourceLoader
-import org.junit.runner.RunWith
-import org.scalatest.junit.JUnitRunner
-import org.scalatest.{FlatSpec, Matchers}
+import play.api.libs.json.JsValue
 
-@RunWith(classOf[JUnitRunner])
+
 class JsonReaderTest extends FlatSpec with Matchers {
 
   private val json = {
     val resources = new ClasspathResourceLoader("org/silkframework/plugins/dataset/json")
-    JsonParser.load(resources.get("example.json"))
+    JsonTraverser(resources.get("example.json"))
   }
 
-  private val persons = JsonParser.select(json, "persons" :: Nil)
+  private val persons = json.select("persons" :: Nil)
+
+  private val phoneNumbers = json.select("persons" :: "phoneNumbers" :: Nil)
 
   "On example.json, JsonReader" should "return 2 persons" in {
     persons.size should equal (2)
   }
 
   it should "return both person names" in {
-    evaluate("name") should equal (Seq("John", "Max"))
+    evaluate(persons, "name") should equal (Seq("John", "Max"))
   }
 
   it should "return all three numbers" in {
-    evaluate("phoneNumbers/number") should equal (Seq("123", "456", "789"))
+    evaluate(persons, "phoneNumbers/number") should equal (Seq("123", "456", "789"))
   }
 
   it should "return both home numbers" in {
-    evaluate("""phoneNumbers[type = "home"]/number""") should equal (Seq("123", "789"))
+    evaluate(persons, """phoneNumbers[type = "home"]/number""") should equal (Seq("123", "789"))
   }
 
-  private def evaluate(path: String): Seq[String] = {
-    persons.flatMap(person => JsonParser.evaluate(person, Path.parse(path)))
+  it should "support backward paths" in {
+    evaluate(phoneNumbers, "\\phoneNumbers/id") should equal (Seq("0", "0", "1"))
+  }
+
+  private def evaluate(values: Seq[JsonTraverser], path: String): Seq[String] = {
+    values.flatMap(value => value.evaluate(Path.parse(path)))
   }
 }

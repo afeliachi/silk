@@ -1,13 +1,12 @@
 package org.silkframework.workspace.activity.linking
 
-import org.silkframework.config.{LinkSpecification, RuntimeConfig}
-import org.silkframework.dataset.Dataset
-import org.silkframework.entity.Link
-import org.silkframework.execution.{Linking, GenerateLinks}
-import org.silkframework.runtime.activity.Activity
+import org.silkframework.rule.execution.{GenerateLinks, Linking}
+import org.silkframework.rule.{LinkSpec, RuntimeLinkingConfig}
+import org.silkframework.runtime.activity.{Activity, ActivityContext}
 import org.silkframework.runtime.plugin.{Param, Plugin}
-import org.silkframework.workspace.Task
+import org.silkframework.workspace.ProjectTask
 import org.silkframework.workspace.activity.TaskActivityFactory
+import org.silkframework.workspace.activity.linking.LinkingTaskUtils._
 
 @Plugin(
   id = "GenerateLinks",
@@ -25,25 +24,56 @@ case class GenerateLinksFactory(
   @Param("Generate detailed information about the matched entities. If set to false, the generated links won't be shown in the Workbench.")
   generateLinksWithEntities: Boolean = true,
   @Param("Write the generated links to the configured output of this task.")
-  writeOutputs: Boolean = true) extends TaskActivityFactory[LinkSpecification, GenerateLinks] {
+  writeOutputs: Boolean = true) extends TaskActivityFactory[LinkSpec, GenerateLinks] {
 
-  def apply(task: Task[LinkSpecification]): Activity[Linking] = {
-    Activity.regenerating {
-      var linksSpec = task.data
-      if(!writeOutputs)
-        linksSpec = linksSpec.copy(outputs = Seq.empty)
-
-      GenerateLinks.fromSources(
-        datasets = task.project.tasks[Dataset].map(_.data),
-        linkSpec = linksSpec,
-        runtimeConfig =
-          RuntimeConfig(
-            includeReferenceLinks = includeReferenceLinks,
-            useFileCache = useFileCache,
-            partitionSize = partitionSize,
-            generateLinksWithEntities = generateLinksWithEntities
-          )
+  def apply(task: ProjectTask[LinkSpec]): Activity[Linking] = {
+    val runtimeConfig =
+      RuntimeLinkingConfig(
+        includeReferenceLinks = includeReferenceLinks,
+        useFileCache = useFileCache,
+        partitionSize = partitionSize,
+        generateLinksWithEntities = generateLinksWithEntities
       )
-    }
+    new GenerateLinksActivity(task, runtimeConfig, writeOutputs)
   }
+}
+
+class GenerateLinksActivity(task: ProjectTask[LinkSpec], runtimeConfig: RuntimeLinkingConfig, writeOutputs: Boolean) extends Activity[Linking] {
+
+  @volatile
+  private var generateLinks: Option[GenerateLinks] = None
+
+  override def name = "GenerateLinks"
+
+  override def initialValue = Some(Linking())
+
+  /**
+    * Executes this activity.
+    *
+    * @param context Holds the context in which the activity is executed.
+    */
+  override def run(context: ActivityContext[Linking]): Unit = {
+    val linkSpec = task.data
+
+    val inputs = task.dataSources
+
+    val outputs =
+      if (writeOutputs) task.linkSinks
+      else Nil
+
+    generateLinks = Some(
+      new GenerateLinks(
+        task.id,
+        inputs = inputs,
+        linkSpec = linkSpec,
+        outputs = outputs,
+        runtimeConfig = runtimeConfig
+      )
+    )
+    generateLinks.get.run(context)
+    generateLinks = None
+  }
+
+  override def cancelExecution() = generateLinks.foreach(_.cancelExecution())
+
 }

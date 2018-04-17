@@ -1,43 +1,35 @@
 package org.silkframework.workspace.activity.transform
 
-import org.silkframework.config.TransformSpecification
-import org.silkframework.dataset.Dataset
 import org.silkframework.entity.EntitySchema
-import org.silkframework.entity.rdf.SparqlEntitySchema
-import org.silkframework.runtime.activity.{ActivityContext, Activity}
-import org.silkframework.workspace.Project
-import org.silkframework.workspace.Task
-
-import scala.xml.Node
+import org.silkframework.rule.TransformSpec
+import org.silkframework.runtime.activity.{Activity, ActivityContext}
+import org.silkframework.workspace.ProjectTask
+import org.silkframework.workspace.activity.PathsCacheTrait
 
 /**
  * Holds the most frequent paths.
  */
-class TransformPathsCache(task: Task[TransformSpecification]) extends Activity[EntitySchema] {
+class TransformPathsCache(task: ProjectTask[TransformSpec]) extends Activity[EntitySchema] with PathsCacheTrait {
 
-  override def name = s"Paths cache ${task.name}"
+  override def name: String = s"Paths cache ${task.id}"
 
-  override def initialValue = Some(EntitySchema.empty)
+  override def initialValue: Option[EntitySchema] = Some(EntitySchema.empty)
 
   /**
    * Loads the most frequent paths.
    */
-  override def run(context: ActivityContext[EntitySchema]) = {
-    val dataset = task.project.task[Dataset](task.data.selection.datasetId).data
+  override def run(context: ActivityContext[EntitySchema]): Unit = {
     val transform = task.data
 
     //Create an entity description from the transformation task
-    val currentEntityDesc = transform.entitySchema
+    val currentEntityDesc = transform.inputSchema
 
     //Check if paths have not been loaded yet or if the restriction has been changed
-    if (context.value().paths.isEmpty || currentEntityDesc.typeUri != context.value().typeUri) {
+    if (context.value().typedPaths.isEmpty || currentEntityDesc.typeUri != context.value().typeUri) {
       // Retrieve the data sources
-      val source = dataset.source
-      //Retrieve most frequent paths
-      context.status.update("Retrieving frequent paths", 0.0)
-      val paths = source.retrievePaths(transform.selection.typeUri, 1)
+      val paths = retrievePathsOfInput(task.data.selection.inputId, Some(transform.selection), task, context)
       //Add the frequent paths to the entity description
-      context.value() = currentEntityDesc.copy(paths = (currentEntityDesc.paths ++ paths).distinct)
+      context.value() = currentEntityDesc.copy(typedPaths = (currentEntityDesc.typedPaths ++ paths).distinct)
     }
   }
 }

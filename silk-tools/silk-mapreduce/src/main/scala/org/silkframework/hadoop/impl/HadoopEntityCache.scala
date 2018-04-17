@@ -14,22 +14,24 @@
 
 package org.silkframework.hadoop.impl
 
-import java.util.logging.Logger
-import org.silkframework.entity.rdf.SparqlEntitySchema
-import org.apache.hadoop.fs.{Path, FileSystem}
-import org.silkframework.entity._
 import java.io._
-import org.silkframework.config.RuntimeConfig
-import org.silkframework.cache.{BitsetIndex, Partition, EntityCache}
+import java.util.logging.Logger
+
+import org.apache.hadoop.fs.{FileSystem, Path}
+import org.silkframework.cache.{BitsetIndex, EntityCache, Partition}
+import org.silkframework.entity._
+import org.silkframework.rule.RuntimeLinkingConfig
 
 /**
- * An entity cache, which uses the Hadoop FileSystem API.
- * This can be used to cache the entities on any file system which is supported by Hadoop e.g. the Hadoop Distributed FileSystem.
- */
-class HadoopEntityCache(val entityDesc: SparqlEntitySchema,
+  * An entity cache, which uses the Hadoop FileSystem API.
+  * This can be used to cache the entities on any file system which is supported by Hadoop e.g. the Hadoop Distributed FileSystem.
+  */
+class HadoopEntityCache(val entityDesc: EntitySchema,
                         val indexFunction: (Entity => Index),
                         fs: FileSystem, path: Path,
-                        runtimeConfig: RuntimeConfig) extends EntityCache {
+                        runtimeConfig: RuntimeLinkingConfig) extends EntityCache {
+
+  override def entitySchema = entityDesc
 
   private val logger = Logger.getLogger(getClass.getName)
 
@@ -38,39 +40,23 @@ class HadoopEntityCache(val entityDesc: SparqlEntitySchema,
   @volatile
   private var writing = false
 
+  private var blockWriters: Array[BlockWriter] = Array.empty
   @volatile
   private var entityCount = 0
 
-  override def write(entities: Traversable[Entity]) {
-    writing = true
-
-    try {
-      fs.delete(path, true)
-
-      val blockWriters = (for (i <- 0 until blockCount) yield new BlockWriter(i)).toArray
-
-      for (entity <- entities) {
-        val indices = if(runtimeConfig.blocking.isEnabled) indexFunction(entity).flatten else Set(0)
-
-        for ((block, index) <- indices.groupBy(i => math.abs(i % blockCount))) {
-          blockWriters(block).write(entity, BitsetIndex.build(index))
-        }
-
-        entityCount += 1
-      }
-
-      blockWriters.foreach(_.close())
-
-      blocks.foreach(_.reload())
-
-      logger.info("Written " + entityCount + " entities.")
+  override def write(entity: Entity) {
+    if (writing == false) {
+      entityCount = 0
+      writing = true
+      blockWriters = (for (i <- 0 until blockCount) yield new BlockWriter(i)).toArray
     }
-    finally {
-      writing = false
+    val indices = if (runtimeConfig.blocking.isEnabled) indexFunction(entity).flatten else Set(0)
+
+    for ((block, index) <- indices.groupBy(i => math.abs(i % blockCount))) {
+      blockWriters(block).write(entity, BitsetIndex.build(index))
     }
+    entityCount += 1
   }
-
-  override def isWriting = writing
 
   override def read(block: Int, partition: Int) = {
     require(block >= 0 && block < blockCount, "0 <= block < " + blockCount + " (block = " + block + ")")
@@ -80,10 +66,14 @@ class HadoopEntityCache(val entityDesc: SparqlEntitySchema,
   }
 
   override def clear() {
-    throw new UnsupportedOperationException()
+    fs.delete(path, true)
   }
 
-  override def close() { }
+  override def close(): Unit = {
+    blockWriters.foreach(_.close())
+    blocks.foreach(_.reload())
+    writing = false
+  }
 
   override def blockCount: Int = runtimeConfig.blocking.enabledBlocks
 
@@ -94,8 +84,8 @@ class HadoopEntityCache(val entityDesc: SparqlEntitySchema,
   }
 
   /**
-   * The size of a specific partition.
-   */
+    * The size of a specific partition.
+    */
   def partitionSize(block: Int, partition: Int): Long = {
     require(block >= 0 && block < blockCount, "0 <= block < " + blockCount + " (block = " + block + ")")
     require(partition >= 0 && partition < blocks(block).partitionCount, "0 <= partition < " + blocks(block).partitionCount + " (partition = " + partition + ")")
@@ -106,8 +96,8 @@ class HadoopEntityCache(val entityDesc: SparqlEntitySchema,
   override def size = entityCount
 
   /**
-   * The list of nodes by name where the partition would be local.
-   */
+    * The list of nodes by name where the partition would be local.
+    */
   def hostLocations(block: Int, partition: Int): Array[String] = {
     require(block >= 0 && block < blockCount, "0 <= block < " + blockCount + " (block = " + block + ")")
     require(partition >= 0 && partition < blocks(block).partitionCount, "0 <= partition < " + blocks(block).partitionCount + " (partition = " + partition + ")")
@@ -126,9 +116,9 @@ class HadoopEntityCache(val entityDesc: SparqlEntitySchema,
         partitionCountCache = {
           if (fs.exists(blockPath)) {
             val partitionFiles = fs.listStatus(blockPath)
-                                   .filter(_.getPath.getName.startsWith("partition"))
-                                   .map(_.getPath.getName.dropWhile(!_.isDigit))
-                                   .filter(!_.isEmpty)
+                .filter(_.getPath.getName.startsWith("partition"))
+                .map(_.getPath.getName.dropWhile(!_.isDigit))
+                .filter(!_.isEmpty)
 
             if (partitionFiles.isEmpty) 0
             else partitionFiles.map(_.toInt).max + 1

@@ -14,13 +14,16 @@
 
 package org.silkframework.hadoop
 
-import impl._
-import org.apache.hadoop.mapreduce._
-import lib.output.FileOutputFormat
-import org.apache.hadoop.io.Text
 import java.util.logging.Logger
-import org.silkframework.plugins.Plugins
-import org.apache.hadoop.fs.Path
+
+import org.apache.hadoop.io.Text
+import org.apache.hadoop.mapreduce._
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
+import org.silkframework.hadoop.impl.SilkInputFormat
+import org.silkframework.hadoop.impl.EntityConfidence
+import org.silkframework.hadoop.impl.SilkMap
+import org.silkframework.hadoop.impl.SilkReduce
+import org.silkframework.hadoop.impl.SilkOutputFormat
 
 /**
  * Executes Silk - MapReduce.
@@ -59,8 +62,6 @@ class Match(inputPath : String, outputPath : String, linkSpec : Option[String], 
    */
   private def setupJob(job : Job)
   {
-    Plugins.register()
-
     val config = SilkConfiguration.get(job.getConfiguration)
 
     //General settings

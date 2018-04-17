@@ -1,8 +1,10 @@
+@import org.silkframework.runtime.plugin.PluginDescription
+@import org.silkframework.workspace.Project
+
 @(name: String,
   opType: String,
-  pluginsByCategory: Map[String, Seq[org.silkframework.runtime.plugin.PluginDescription[_]]])
-
-@import org.silkframework.runtime.plugin.PluginDescription
+  pluginsByCategory: Map[String, Seq[org.silkframework.runtime.plugin.PluginDescription[_]]],
+  project: Project)
 
 <script type="text/javascript">
 // Initialization
@@ -10,12 +12,17 @@ $(function() {
   // Make operators draggable
   $('.@name.toLowerCase').draggable({
     helper: function() {
-      var box = $(this).children('.@{opType}Div').clone(false);
-      box.attr("id", generateNewElementId(box.attr("id")));
+      var box = $(this).children('.dragDiv');
       box.show();
       return box;
+    } ,
+    stop: function(event, ui) {
+      ui.helper.hide();
+      $.ui.ddmanager.current.cancelHelperRemoval = true;
     }
+    //containment: "#content"
   });
+
 
   // Hide all operators except the recommended ones
   @for(category <- pluginsByCategory.keys if category != "Recommended") {
@@ -32,48 +39,54 @@ $(function() {
 });
 </script>
 
-<div class="boxheaders @{opType}Header">
-  @name
-  <select id="@{opType}_category" name="category" style="font-size:0.9em;">
-    @for(category <- pluginsByCategory.keys.toSeq.sorted) {
-      <option value="@category" @if(category == "Recommended"){ selected="selected" } >
-        @category
-      </option>
-    }
-  </select>
-</div>
-
-<div id="@{opType}box" class="scrollboxes" style="height: 67.9px;">
-  @for((category, plugins) <- pluginsByCategory) {
-    <div id="@{opType}_category_@category">
-    @for(plugin <- plugins.sortBy(_.label)) {
-      @operatorIcon(plugin, category)
-    }
+<div class="palette-block">
+  <div class="block-header @{opType}Header clearfix">
+    <span class="operator-type">@name</span>
+    <div class="mdl-selectfield mdl-js-selectfield">
+      <select id="@{opType}_category" class="mdl-selectfield__select" name="category" style="font-size:0.9em;">
+       @for(category <- pluginsByCategory.keys.toSeq.sorted) {
+          <option value="@category" @if(category == "Recommended"){ selected="selected" } >
+            @category
+          </option>
+        }
+      </select>
     </div>
-  }
+  </div>
+
+  <div id="@{opType}box" class="scrollboxes" style="height: 67.9px;">
+    @for((category, plugins) <- pluginsByCategory) {
+      <div id="@{opType}_category_@category">
+      @for(plugin <- plugins.sortBy(_.label)) {
+        @operatorIcon(plugin, category)
+      }
+      </div>
+    }
+  </div>
 </div>
 
 @**
  * A single operator in the toolbox.
  *@
 @operatorIcon(plugin: PluginDescription[_], category: String) = {
-  <div id="@{opType}_@{category}_@plugin.id" class="draggable @name.toLowerCase" title="@plugin.description">
+  <div id="@{opType}_@{category}_@plugin.id" class="draggable @name.toLowerCase">
     <span></span>
     <small>@plugin.label</small>
-    <p>@plugin.label</p>
+    <p class="non-breaking-label">@plugin.label</p>
     @operatorExpanded(plugin)
+  </div>
+  <div class="mdl-tooltip mdl-tooltip--right" for="@{opType}_@{category}_@plugin.id">
+    @plugin.description
   </div>
 }
 
 @operatorExpanded(plugin: PluginDescription[_]) = {
   @opType match {
-    case "transform" => { @transformationBox(plugin.id, plugin, parameterValues(plugin), 0, 0, false) }
-    case "compare" => { @comparisonBox(plugin.id, false, 1, 0.0, plugin, parameterValues(plugin), 0, 0, false) }
-    case "aggregate" => { @aggregationBox(plugin.id, false, 1, plugin, parameterValues(plugin), 0, 0, false) }
+    case "transform" => { @transformationBox(plugin.id, plugin, parameterValues(plugin), 0, 0, false, project) }
+    case "compare" => { @comparisonBox(plugin.id, false, 1, 0.0, plugin, parameterValues(plugin), 0, 0, false, project) }
+    case "aggregate" => { @aggregationBox(plugin.id, false, 1, plugin, parameterValues(plugin), 0, 0, false, project) }
   }
 }
 
 @parameterValues(plugin: PluginDescription[_]) = @{
-  val values = for(p <- plugin.parameters) yield (p.name, p.defaultValue.getOrElse("").toString)
-  values.toMap
+  for(p <- plugin.parameters) yield p.defaultValue.getOrElse("").toString
 }

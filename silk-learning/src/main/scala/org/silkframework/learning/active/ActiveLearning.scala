@@ -14,25 +14,24 @@
 
 package org.silkframework.learning.active
 
-import org.silkframework.config.LinkSpecification
 import org.silkframework.dataset.DataSource
 import org.silkframework.entity.Path
-import org.silkframework.evaluation.{LinkageRuleEvaluator, ReferenceEntities}
 import org.silkframework.learning.LearningConfiguration
 import org.silkframework.learning.active.linkselector.WeightedLinkageRule
 import org.silkframework.learning.cleaning.CleanPopulationTask
 import org.silkframework.learning.generation.{GeneratePopulation, LinkageRuleGenerator}
 import org.silkframework.learning.reproduction.{Randomize, Reproduction}
-import org.silkframework.rule.LinkageRule
+import org.silkframework.rule.evaluation.{LinkageRuleEvaluator, ReferenceEntities}
+import org.silkframework.rule.{LinkSpec, LinkageRule}
+import org.silkframework.runtime.activity.Status.Canceling
 import org.silkframework.runtime.activity.{Activity, ActivityContext}
 import org.silkframework.util.{DPair, Timer}
 
 import scala.math.max
 
-//TODO support canceling
 class ActiveLearning(config: LearningConfiguration,
                      datasets: DPair[DataSource],
-                     linkSpec: LinkSpecification,
+                     linkSpec: LinkSpec,
                      paths: DPair[Seq[Path]],
                      referenceEntities: ReferenceEntities = ReferenceEntities.empty,
                      initialState: ActiveLearningState = ActiveLearningState.initial) extends Activity[ActiveLearningState] {
@@ -52,7 +51,7 @@ class ActiveLearning(config: LearningConfiguration,
     buildPopulation(generator, context)
 
     // Ensure that we got positive and negative reference links
-    val completeEntities = Timer("CompleteReferenceLinks") { CompleteReferenceLinks(referenceEntities, pool.links, context.value().population) }
+    val completeEntities = CompleteReferenceLinks(referenceEntities, pool.links, context.value().population)
     val fitnessFunction = config.fitnessFunction(completeEntities)
 
     // Learn new population
@@ -69,15 +68,15 @@ class ActiveLearning(config: LearningConfiguration,
     var pool = context.value().pool
 
     //Build unlabeled pool
-    val poolPaths = context.value().pool.entityDescs.map(_.paths)
+    val poolPaths = context.value().pool.entityDescs.map(_.typedPaths)
     if(context.value().pool.isEmpty || poolPaths != paths) {
-      context.status.update("Loading pool")
+      context.status.updateMessage("Loading pool")
       val generator = config.active.linkPoolGenerator.generator(datasets, linkSpec, paths)
       pool = context.child(generator, 0.5).startBlockingAndGetValue()
     }
 
     //Assert that no reference links are in the pool
-    pool = pool.withoutLinks(referenceEntities.all)
+    pool = pool.withoutLinks(linkSpec.referenceLinks.positive ++ linkSpec.referenceLinks.negative)
 
     // Update pool
     context.value() = context.value().copy(pool = pool)
@@ -97,47 +96,52 @@ class ActiveLearning(config: LearningConfiguration,
     if(population.isEmpty) {
       context.status.update("Generating population", 0.5)
       val seedRules = if(config.params.seed) linkSpec.rule :: Nil else Nil
-      population = context.child(new GeneratePopulation(seedRules, generator, config), 0.6).startBlockingAndGetValue()
+      population = context.child(new GeneratePopulation(seedRules, generator, config), 0.3).startBlockingAndGetValue()
     }
     context.value() = context.value().copy(population = population)
   }
   
   private def updatePopulation(generator: LinkageRuleGenerator, completeEntities: ReferenceEntities, fitnessFunction: (LinkageRule => Double), context: ActivityContext[ActiveLearningState]) = Timer("Updating population") {
+    context.status.update("Reproducing", 0.6)
     val targetFitness = if(context.value().population.isEmpty) 1.0 else context.value().population.bestIndividual.fitness
     var population = context.value().population
     for(i <- 0 until config.params.maxIterations
+        if !context.status().isInstanceOf[Canceling]
         if i > 0 || population.bestIndividual.fitness < targetFitness
         if LinkageRuleEvaluator(population.bestIndividual.node.build, completeEntities).fMeasure < config.params.destinationfMeasure) {
-      val progress = 0.2 / config.params.maxIterations
-      population = context.child(new Reproduction(population, fitnessFunction, generator, config), progress).startBlockingAndGetValue()
+      population = context.child(new Reproduction(population, fitnessFunction, generator, config)).startBlockingAndGetValue()
       if(i % config.params.cleanFrequency == 0) {
         population = context.child(new CleanPopulationTask(population, fitnessFunction, generator)).startBlockingAndGetValue()
       }
+      context.status.updateProgress(0.6 + 0.2 / config.params.maxIterations, logStatus = false)
     }
     context.value() = context.value().copy(population = population)
   }
 
-  private def selectLinks(generator: LinkageRuleGenerator, completeEntities: ReferenceEntities, fitnessFunction: (LinkageRule => Double), context: ActivityContext[ActiveLearningState]) = Timer("Selecting links") {
-    context.status.update("Selecting evaluation links", 0.8)
+  private def selectLinks(generator: LinkageRuleGenerator, completeEntities: ReferenceEntities, fitnessFunction: (LinkageRule => Double), context: ActivityContext[ActiveLearningState]): Unit = Timer("Selecting links") {
+    if(!context.status().isInstanceOf[Canceling]) {
+      context.status.update("Selecting evaluation links", 0.8)
 
-    //TODO measure improvement of randomization
-    val randomizedPopulation = context.child(new Randomize(context.value().population, fitnessFunction, generator, config)).startBlockingAndGetValue()
+      //TODO measure improvement of randomization
+      val randomizedPopulation = context.child(new Randomize(context.value().population, fitnessFunction, generator, config)).startBlockingAndGetValue()
 
-    val weightedRules = {
-      val bestFitness = randomizedPopulation.bestIndividual.fitness
-      val topIndividuals = randomizedPopulation.individuals.toSeq.filter(_.fitness >= bestFitness * 0.1).sortBy(-_.fitness)
-      for(individual <- topIndividuals) yield {
-        new WeightedLinkageRule(individual.node.build.operator, max(0.0001, individual.fitness))
+      val weightedRules = {
+        val bestFitness = randomizedPopulation.bestIndividual.fitness
+        val topIndividuals = randomizedPopulation.individuals.toSeq.filter(_.fitness >= bestFitness * 0.1).sortBy(-_.fitness)
+        for (individual <- topIndividuals) yield {
+          new WeightedLinkageRule(individual.node.build.operator, max(0.0001, individual.fitness))
+        }
       }
+
+      val updatedLinks = config.active.selector(weightedRules, context.value().pool.links.toSeq, completeEntities)
+      context.value() = context.value().copy(links = updatedLinks)
+      for(topLink <- updatedLinks.headOption)
+        context.log.fine(s"Selected top link candidate $topLink using ${config.active.selector.toString}")
     }
-
-    val updatedLinks = config.active.selector(weightedRules, context.value().pool.links.toSeq, completeEntities)
-
-    context.value() = context.value().copy(links = updatedLinks)
   }
 
   private def cleanPopulation(generator: LinkageRuleGenerator, fitnessFunction: (LinkageRule => Double), context: ActivityContext[ActiveLearningState]): Unit = {
-    if(referenceEntities.isDefined) {
+    if(referenceEntities.isDefined && !context.status().isInstanceOf[Canceling]) {
       val cleanedPopulation = context.child(new CleanPopulationTask(context.value().population, fitnessFunction, generator)).startBlockingAndGetValue()
       context.value() = context.value().copy(population = cleanedPopulation)
     }

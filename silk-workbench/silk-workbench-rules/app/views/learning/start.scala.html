@@ -1,11 +1,11 @@
+@import org.silkframework.rule.LinkSpec
 @import plugins.Context
-@import org.silkframework.config.LinkSpecification
 
-@(context: Context[LinkSpecification])
+@(context: Context[LinkSpec])(implicit session: play.api.mvc.Session)
 
 @header = {
   <script type="text/javascript">
-    var taskUrl = '@config.baseUrl/linking/tasks/@context.project.name/@context.task.name';
+    var taskUrl = '@config.baseUrl/linking/tasks/@context.project.name/@context.task.id';
 
     function startLearning() {
       $.ajax({
@@ -22,22 +22,19 @@
     }
     
     function startActiveLearning() {
-      $.ajax({
-        type: 'PUT',
-        url: taskUrl + '/activeLearningTask',
-        data: '',
-        success: function(response) {
-          window.location = "activeLearn"
-        },
-        error: function(request) {
-          alert(request.responseText);
-        }
-      });
+      window.location = "activeLearn"
     }
   </script>
 }
 
 @toolbar = {
+<!--
+<ul>
+  <li>
+    <button class="mdl-button mdl-js-button mdl-button&#45;&#45;raised" onclick="window.location = 'activeLearnTest'">Test</button>
+  </li>
+</ul>
+-->
 }
 
 @content = {
@@ -45,15 +42,15 @@
     <span>
       There are already @context.task.data.referenceLinks.positive.size positive and @context.task.data.referenceLinks.positive.size negative reference links.
       Start learning a linkage rules from existing reference links: 
-      <button onClick="startLearning()">Start</button>
+      <button class="mdl-button mdl-js-button mdl-button--raised" onClick="startLearning()">Start</button>
       <br/>
       Start with existing reference links but find new reference links:
-      <button onClick="startActiveLearning()">Start</button>
+      <button class="mdl-button mdl-js-button mdl-button--raised" onClick="startActiveLearning()">Start</button>
     </span>
   } else {
     <span>
       Start active learning: 
-      <button onClick="startActiveLearning()">Start</button>
+      <button class="mdl-button mdl-js-button mdl-button--raised" onClick="startActiveLearning()">Start</button>
     </span>
   }
 }

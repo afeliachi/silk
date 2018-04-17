@@ -1,12 +1,12 @@
 package org.silkframework.workspace.activity.transform
 
-import org.silkframework.config.TransformSpecification
-import org.silkframework.dataset.Dataset
-import org.silkframework.execution.ExecuteTransform
+import org.silkframework.rule.execution.{ExecuteTransform, TransformReport}
+import org.silkframework.rule.TransformSpec
 import org.silkframework.runtime.activity.Activity
 import org.silkframework.runtime.plugin.Plugin
-import org.silkframework.workspace.Task
+import org.silkframework.workspace.ProjectTask
 import org.silkframework.workspace.activity.TaskActivityFactory
+import org.silkframework.workspace.activity.transform.TransformTaskUtils._
 
 @Plugin(
   id = "ExecuteTransform",
@@ -14,15 +14,14 @@ import org.silkframework.workspace.activity.TaskActivityFactory
   categories = Array("TransformSpecification"),
   description = "Executes the transformation."
 )
-case class ExecuteTransformFactory() extends TaskActivityFactory[TransformSpecification, ExecuteTransform] {
+case class ExecuteTransformFactory() extends TaskActivityFactory[TransformSpec, ExecuteTransform] {
 
-  def apply(task: Task[TransformSpecification]): Activity[Unit] = {
+  def apply(task: ProjectTask[TransformSpec]): Activity[TransformReport] = {
     Activity.regenerating {
       new ExecuteTransform(
-        input = task.project.task[Dataset](task.data.selection.datasetId).data.source,
-        selection = task.data.selection,
-        rules = task.data.rules,
-        outputs = task.data.outputs.map(id => task.project.task[Dataset](id).data.entitySink)
+        task.dataSource,
+        task.data,
+        task.entitySinks
       )
     }
   }

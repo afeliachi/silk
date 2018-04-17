@@ -14,12 +14,13 @@
 
 package org.silkframework.hadoop
 
-import impl.HadoopEntityCache
 import org.apache.hadoop.fs.{FileSystem, Path}
-import org.silkframework.plugins.Plugins
-import org.silkframework.config.LinkingConfig
-import org.silkframework.plugins.dataset.JenaPlugins
 import org.silkframework.runtime.resource.EmptyResourceManager
+import org.silkframework.hadoop.impl.HadoopEntityCache
+import org.silkframework.rule.LinkingConfig
+import org.silkframework.runtime.serialization.ReadContext
+
+import scala.xml.XML
 
 object SilkConfiguration {
   val InputParam = "silk.inputpath"
@@ -45,10 +46,7 @@ class SilkConfiguration private(hadoopConfig : org.apache.hadoop.conf.Configurat
   private lazy val cacheFS = FileSystem.get(entityCachePath.toUri, hadoopConfig)
 
   lazy val config = {
-    Plugins.register()
-    JenaPlugins.register()
-    val resourceLoader = new EmptyResourceManager()
-    LinkingConfig.load(resourceLoader)(cacheFS.open(entityCachePath.suffix("/config.xml")))
+    LinkingConfig.LinkingConfigFormat.read(XML.load(cacheFS.open(entityCachePath.suffix("/config.xml"))))(new ReadContext(EmptyResourceManager))
   }
 
   lazy val linkSpec = {
@@ -59,10 +57,10 @@ class SilkConfiguration private(hadoopConfig : org.apache.hadoop.conf.Configurat
   lazy val entityDescs = linkSpec.entityDescriptions
 
   lazy val sourceCache = {
-    new HadoopEntityCache(entityDescs.source, linkSpec.rule.index(_), cacheFS, entityCachePath.suffix("/source/" + linkSpec.id + "/"), config.runtime)
+    new HadoopEntityCache(entityDescs.source, linkSpec.rule.index(_, true), cacheFS, entityCachePath.suffix("/source/" + linkSpec.id + "/"), config.runtime)
   }
 
   lazy val targetCache = {
-    new HadoopEntityCache(entityDescs.target, linkSpec.rule.index(_), cacheFS, entityCachePath.suffix("/target/" + linkSpec.id + "/"), config.runtime)
+    new HadoopEntityCache(entityDescs.target, linkSpec.rule.index(_, false), cacheFS, entityCachePath.suffix("/target/" + linkSpec.id + "/"), config.runtime)
   }
 }

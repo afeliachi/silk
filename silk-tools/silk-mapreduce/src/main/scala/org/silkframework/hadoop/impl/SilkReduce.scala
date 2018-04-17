@@ -14,9 +14,10 @@
 
 package org.silkframework.hadoop.impl
 
-import org.apache.hadoop.mapreduce.Reducer
-import scala.collection.JavaConversions._
 import org.apache.hadoop.io.Text
+import org.apache.hadoop.mapreduce.Reducer
+
+import scala.collection.JavaConversions._
 import org.silkframework.hadoop.SilkConfiguration
 
 class SilkReduce extends Reducer[Text, EntityConfidence, Text, EntityConfidence] {

@@ -19,18 +19,40 @@ function serializeWorkflow() {
   // Create xml document
   var xmlDoc = document.implementation.createDocument('', 'root', null);
   var xml = xmlDoc.createElement("Workflow");
-
+  xml.setAttribute("id", workflowId);
+  // minPosition will be used to align the minimum x and y values to 0
+  const minPosition = minPositionAllOperators();
   // Serialize all operators and datasets
-  $('#editorContent').find('.operator').each(function() { serializeOperator(this, xml) });
-  $('#editorContent').find('.dataset').each(function() { serializeDataset(this, xml) });
+  $('#editorContent').find('.operator').each(function() { serializeWorkflowOperator(this, xml, "Operator", minPosition) });
+  $('#editorContent').find('.dataset').each(function() { serializeWorkflowOperator(this, xml, "Dataset", minPosition) });
 
   // Return xml string
   var xmlString = (new XMLSerializer()).serializeToString(xml);
-  xmlString = xmlString.replace(/&amp;/g, "&");
   return xmlString;
 }
 
-function serializeOperator(op, xml) {
+// The minimum x and y value of all workflow operators
+function minPositionAllOperators() {
+  const xValues = $('#editorContent').find('.operator, .dataset').map(function() {
+     var position = $(this).position();
+     return position.left;
+  });
+  const yValues = $('#editorContent').find('.operator, .dataset').map(function() {
+       var position = $(this).position();
+       return position.top;
+    });
+  xValues.push(0);
+  yValues.push(0);
+  const minX = Math.min.apply(null, xValues);
+  const minY = Math.min.apply(null, yValues);
+  console.log(minX + ', ' + minY);
+  return [minX, minY]
+}
+
+// type can be 'Operator' or 'Dataset'
+function serializeWorkflowOperator(op, xml, type, minPosition) {
+  const minX = minPosition[0];
+  const minY = minPosition[1];
   // Get position
   var position = $(op).position();
 
@@ -41,34 +63,30 @@ function serializeOperator(op, xml) {
   // Create a list of source ids
   var sources =
       $.map(incoming, function(connection) {
-        return getId(connection.sourceId);
+        return connection.sourceId;
       }).join(",");
 
   // Create a list of target ids
   var targets =
       $.map(outgoing, function(connection) {
-        return getId(connection.targetId);
+        return connection.targetId;
       }).join(",");
 
   // Assemble xml
-  var operatorXml = xml.ownerDocument.createElement("Operator");
-  operatorXml.setAttribute("posX", position.left);
-  operatorXml.setAttribute("posY", position.top);
-  operatorXml.setAttribute("task", getId(op.id));
+  var operatorXml = xml.ownerDocument.createElement(type);
+  operatorXml.setAttribute("posX", position.left - minX);
+  operatorXml.setAttribute("posY", position.top - minY);
+  var taskId = $(op).attr("taskid");
+  if(taskId === undefined) {
+    taskId = op.id
+  }
+  operatorXml.setAttribute("task", taskId);
+  var outputPriority = $(op).attr("output_priority")
+  if(outputPriority) {
+    operatorXml.setAttribute("outputPriority", outputPriority);
+  }
+  operatorXml.setAttribute("id", op.id);
   operatorXml.setAttribute("inputs", sources);
   operatorXml.setAttribute("outputs", targets);
   xml.appendChild(operatorXml);
-}
-
-function serializeDataset(ds, xml) {
-  var position = $(ds).position();
-  var datasetXml = xml.ownerDocument.createElement("Dataset");
-  datasetXml.setAttribute("posX", position.left);
-  datasetXml.setAttribute("posY", position.top);
-  datasetXml.setAttribute("task", getId(ds.id));
-  xml.appendChild(datasetXml);
-}
-
-function getId(id) {
-  return id.substring(id.indexOf("_") + 1)
 }

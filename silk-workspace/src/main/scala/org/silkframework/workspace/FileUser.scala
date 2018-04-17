@@ -16,10 +16,12 @@ package org.silkframework.workspace
 
 import java.io.File
 import java.util.logging.{Level, Logger}
+import javax.inject.Inject
 
-import org.silkframework.workspace.xml._
-import org.silkframework.config.Config
+import org.silkframework.config.{Config, DefaultConfig}
 import org.silkframework.runtime.plugin.PluginRegistry
+import org.silkframework.workspace.resources.{PerProjectFileRepository, ResourceRepository}
+import org.silkframework.workspace.xml._
 
 class FileUser extends User {
 
@@ -28,6 +30,9 @@ class FileUser extends User {
 }
 
 object FileUser {
+  private val log: Logger = Logger.getLogger(this.getClass.getName.stripSuffix("$"))
+  @Inject
+  private var configMgr: Config = DefaultConfig.instance
 
   lazy val workspaceDir = {
     val elds_home = System.getenv("ELDS_HOME")
@@ -40,14 +45,26 @@ object FileUser {
   lazy val workspace: Workspace = {
     try {
       // Load the workspace provider from configuration or use the default file-based one
-      val provider =
-        if(Config().hasPath("workspace.provider"))
-          PluginRegistry.createFromConfig[WorkspaceProvider]("workspace.provider")
-        else
-          new FileWorkspaceProvider(workspaceDir.getAbsolutePath)
+      val provider: WorkspaceProvider =
+        if(configMgr().hasPath("workspace.provider")) {
+          val provider = PluginRegistry.createFromConfig[WorkspaceProvider]("workspace.provider")
+          log.info("Using configured workspace provider " + configMgr().getString("workspace.provider.plugin"))
+          provider
+        } else {
+          FileWorkspaceProvider(workspaceDir.getAbsolutePath)
+        }
+
+      val repository: ResourceRepository =
+        if(configMgr().hasPath("workspace.repository")) {
+          val repository = PluginRegistry.createFromConfig[ResourceRepository]("workspace.repository")
+          log.info("Using configured workspace repository type " + configMgr().getString("workspace.repository.plugin"))
+          repository
+        } else {
+          PerProjectFileRepository(workspaceDir.getAbsolutePath)
+        }
 
       // Create workspace
-      new Workspace(provider)
+      new Workspace(provider, repository)
     }
     catch {
       case ex: Exception => {

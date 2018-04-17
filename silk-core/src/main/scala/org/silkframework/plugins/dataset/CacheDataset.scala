@@ -15,17 +15,16 @@
 package org.silkframework.plugins.dataset
 
 import java.io.File
+
 import org.silkframework.cache.FileEntityCache
 import org.silkframework.config.RuntimeConfig
-import org.silkframework.dataset.{DataSource, DatasetPlugin}
-import org.silkframework.entity.rdf.SparqlEntitySchema
-import org.silkframework.entity.{EntitySchema, Entity, Index}
+import org.silkframework.dataset.{DataSource, Dataset}
+import org.silkframework.entity.{Entity, EntitySchema, Index}
 import org.silkframework.runtime.plugin.Plugin
-import org.silkframework.util.FileUtils._
 import org.silkframework.util.Uri
 
 @Plugin(id = "cache", label = "Cache", description= "Reads the entities from an existing Silk entity cache.")
-case class CacheDataset(dir: String) extends DatasetPlugin {
+case class CacheDataset(dir: String) extends Dataset {
 
   private val file = new File(dir)
 
@@ -34,8 +33,6 @@ case class CacheDataset(dir: String) extends DatasetPlugin {
   override def entitySink = ???
 
   override def linkSink = ???
-
-  override def clear: Unit = { }
 
   object CacheSource extends DataSource {
     def retrieve(entityDesc: EntitySchema, limit: Option[Int]): Traversable[Entity] = {

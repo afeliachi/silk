@@ -1,9 +1,14 @@
 package org.silkframework.runtime.activity
 
+import java.util.concurrent.ForkJoinPool.ForkJoinWorkerThreadFactory
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{Executors, ForkJoinPool, ForkJoinWorkerThread, ThreadFactory}
+
 import org.silkframework.util.StringUtils._
 
 import scala.concurrent.ExecutionContext
 import scala.reflect.ClassTag
+import scala.math.max
 
 /**
  * An activity is a unit of work that can be executed in the background.
@@ -34,6 +39,11 @@ trait Activity[T] extends HasValue {
   def cancelExecution(): Unit = { }
 
   /**
+    * Can be overridden in implementing classes to implement reset behaviour in addition to resetting the activity value to its initial value.
+    */
+  def reset(): Unit = { }
+
+  /**
    * The initial value of this activity, if any.
    */
   def initialValue: Option[T] = None
@@ -50,10 +60,18 @@ trait Activity[T] extends HasValue {
 object Activity {
 
   /**
-   * The execution context used to run activities.
+   * The fork join pool used to run activities.
    */
-  @volatile
-  var executionContext: ExecutionContext = ExecutionContext.global
+  val forkJoinPool: ForkJoinPool = {
+    val minimumNumberOfThreads = 4
+    val threadCount = max(minimumNumberOfThreads, Runtime.getRuntime.availableProcessors())
+    new ForkJoinPool(threadCount, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
+  }
+
+  /**
+    * The base path into which all activity output is logged
+    */
+  val loggingPath = "org.silkframework.runtime.activity"
 
   /**
    * Retrieves a control for an activity without executing it.
@@ -78,8 +96,10 @@ object Activity {
         currentActivity = None
       }
       override def cancelExecution() = currentActivity.foreach(_.cancelExecution())
+      override def reset() = currentActivity.foreach(_.reset())
     }
   }
+
 }
 
 

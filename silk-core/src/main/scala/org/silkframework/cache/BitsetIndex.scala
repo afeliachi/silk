@@ -14,7 +14,7 @@
 
 package org.silkframework.cache
 
-import java.io.{DataOutput, DataInput}
+import java.io.{DataInput, DataOutput}
 
 /**
  * Efficient index.
@@ -60,6 +60,13 @@ final class BitsetIndex private(private val index: Set[Int], private val bitset:
     stream.writeInt(index.size)
     index.foreach(stream.writeInt)
     bitset.foreach(stream.writeLong)
+  }
+
+  override def equals(obj: scala.Any): Boolean = obj match {
+    case bs: BitsetIndex =>
+      index == bs.index && bitset.sameElements(bs.bitset)
+    case _ =>
+      false
   }
 }
 

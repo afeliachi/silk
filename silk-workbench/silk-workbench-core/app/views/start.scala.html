@@ -1,6 +1,6 @@
 @import controllers.core.routes.Assets
 
-@(welcome: Html)
+@(welcome: Html)(implicit session: play.api.mvc.Session)
 
 @exampleName = @{ "movies" }
 
@@ -18,15 +18,13 @@
     @welcome
   </div>
 
-  <h2>Current Workspace</h2>
-
   <p>
     Your current workspace contains @projects.size project(s).
   </p>
 
-  <button onclick="window.location = '@config.baseUrl/workspace'">Open Workspace</button>
+  <button class="mdl-button mdl-js-button mdl-button--raised" onclick="window.location = '@config.baseUrl/workspace'">Open Workspace</button>
   @if(!projects.exists(_.name == exampleName)) {
-    <button onclick="loadExample()">Load Example</button>
+    <button id="start-load-example" class="mdl-button mdl-js-button mdl-button--raised" onclick="loadExample()" style="margin-left: 5px;">Load Example</button>
   }
 
   <script type="text/javascript">

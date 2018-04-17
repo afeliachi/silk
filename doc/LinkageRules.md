@@ -9,7 +9,7 @@ Linkage rules are represented as trees, which are built from four types of opera
   Multiple transformation operators can be nested in order to apply a chain of transformations.
 - **Comparison Operator:** Evaluates the similarity between two entities based on the values that are returned by two property or transformation operators by applying a distance measureand a distance threshold. 
   Examples of distance measures include Levenshtein, Jaccard, or geographic distance. 
-- **Aggregation Operator:** Due to the fact that, in most cases, the similarity of two entities cannot be determined by evaluating a single comparison, an aggregation operator combines the similarity scores from multiple comparison or aggregation operators $\vec{s}$ into a single score according to a specific aggregation function. 
+- **Aggregation Operator:** Due to the fact that, in most cases, the similarity of two entities cannot be determined by evaluating a single comparison, an aggregation operator combines the similarity scores from multiple comparison or aggregation operators into a single score according to a specific aggregation function.
   Examples of common aggregation functions include the weighted average or yielding the minimum score of all operators.
 
 ## Path Inputs
@@ -19,23 +19,22 @@ Every path statement begins with a variable (as defined in the datasets), which 
 
 The following operators can be used to traverse the graph:
 
-----------------------------------------------------------------------------------------------------------------------
-Operator Name              Use                             Description
--------- ----------------- ------------------------------- -----------------------------------------------------------
-/        forward operator | `<path_segment>/<property>`    Moves forward from a subject resource (set) through a 
-                                                           property to its object resource (set).
+---------------------------------------------------------------------------------------------------------------------
+Operator Name             Use                               Description
+-------- ---------------- --------------------------------- ---------------------------------------------------------
+/        forward          `<path_segment>/<property>`       Moves forward from a subject resource (set) through a
+         operator                                           property to its object resource (set).
 
-\\       reverse operator | `<path_segment>\<property>`    Moves backward from an object resource (set) through a
-                                                           property to its subject resource (set).
+\\       reverse          `<path_segment>\<property>`       Moves backward from an object resource (set) through a
+         operator                                           property to its subject resource (set).
 
-[ ]      filter operator  | `<code><path_segment>\         Reduces the currently selected set of resources to the ones 
-                            [<property> <comp_operator>    matching the filter expression. comp\_operator may be one of
-                            <value>\]</code> <code>         &gt;, <, >=, &lt;=, =, !=
-                            <path_segment>\[@lang
-                            <comp_operator> <value>\]
-                            </code>`
+[ ]      filter           `<path_segment>`                  Reduces the currently selected set of resources to the ones
+         operator         `[<property> <comp_operator>`     matching the filter expression. comp\_operator may be one of
+                          `<value>]`                        &gt;, <, >=, &lt;=, =, !=
+                          `<path_segment>[@lang`
+                          `<comp_operator> <value>]`
 
-------------------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------------
 
 ### Examples
 
@@ -100,7 +99,9 @@ Inputs               The 2 inputs for the comparison.
 
 The threshold is used to convert the computed distance to a confidence between -1.0 and 1.0. Links will be generated for confidences above 0 while higher confidence values imply a higher similarity between the compared entities.
 
-![Threshold](media/linking_threshold.png)
+![Threshold](img/linking_threshold.png)
+
+If distance measures generate multiple distance scores the lowest is used to generate the confidence.
 
 ### Character-Based Distance Measures
 

@@ -1,30 +1,49 @@
 package config
 
 import java.io.File
+
+import config.WorkbenchConfig.Tabs
+import org.silkframework.runtime.resource._
 import play.api.Play
 import play.api.Play.current
-import org.silkframework.runtime.resource._
-import WorkbenchConfig.Tabs
-import views.html.play20.welcome
 import org.silkframework.buildInfo.BuildInfo
+import org.silkframework.config.DefaultConfig
+
+import scala.util.{Failure, Success, Try}
 
 /**
  * Workbench configuration.
  *
  * @param title The application title.
+ * @param showHeader Whether the header is shown
  * @param logo The application logo. Must point to a file in the conf directory.
  * @param welcome Welcome message. Must point to a file in the conf directory.
  * @param tabs The shown tabs.
  */
 case class WorkbenchConfig(title: String = "Silk Workbench",
                            version: String,
+                           showHeader: Boolean,
                            logo: Resource,
                            welcome: Resource,
                            about: Resource,
-                           tabs: Tabs = Tabs()) {
+                           mdlStyle: Option[Resource],
+                           tabs: Tabs = Tabs(),
+                           loggedOut: Resource) {
+  var showLogoutButton: Boolean = false
 }
 
 object WorkbenchConfig {
+  // The version of the workbench
+  lazy val version = {
+    Try(
+      DefaultConfig.instance.apply().getString("workbench.version")
+    ) match {
+      case Success(versionString) =>
+        versionString
+      case Failure(ex) =>
+        BuildInfo.version
+    }
+  }
   /**
    * Retrieves the Workbench configuration.
    */
@@ -34,30 +53,33 @@ object WorkbenchConfig {
 
     WorkbenchConfig(
       title = config.getString("workbench.title").getOrElse("Silk Workbench"),
-      version = BuildInfo.version,
+      version = version,
+      showHeader = config.getBoolean("workbench.showHeader").getOrElse(true),
       logo = resourceLoader.get(config.getString("workbench.logo").getOrElse("logo.png")),
       welcome = resourceLoader.get(config.getString("workbench.welcome").getOrElse("welcome.html")),
       about = resourceLoader.get(config.getString("workbench.about").getOrElse("about.html")),
+      mdlStyle = config.getString("workbench.mdlStyle").map(r=>resourceLoader.get(r)),
       tabs = Tabs(
                config.getBoolean("workbench.tabs.editor").getOrElse(true),
                config.getBoolean("workbench.tabs.generateLinks").getOrElse(true),
                config.getBoolean("workbench.tabs.learn").getOrElse(true),
                config.getBoolean("workbench.tabs.referenceLinks").getOrElse(true),
                config.getBoolean("workbench.tabs.status").getOrElse(true)
-             )
+             ),
+      loggedOut = resourceLoader.get("loggedOut.html")
     )
   }
 
   def getResourceLoader: ResourceLoader = {
     //Depending on the distribution method, the configuration resources may be located at different locations.
     //We identify the configuration location by searching for the application configuration.
-    if(new File("conf/reference.conf").exists())
+    if(new File("conf/application.conf").exists() || new File("conf/reference.conf").exists())
       new FileResourceManager(new File("conf/"))
-    else if(new File("silk-workbench/conf/reference.conf").exists())
+    else if(new File("silk-workbench/conf/application.conf").exists() || new File("silk-workbench/conf/reference.conf").exists())
       new FileResourceManager(new File("silk-workbench/conf/"))
-    else if(new File("../conf/reference.conf").exists())
+    else if(new File("../conf/application.conf").exists() || new File("../conf/reference.conf").exists())
       new FileResourceManager(new File("../conf/"))
-    else if(getClass.getClassLoader.getResourceAsStream("reference.conf") != null)
+    else if(getClass.getClassLoader.getResourceAsStream("reference.conf") != null || getClass.getClassLoader.getResourceAsStream("application.conf") != null)
       new ClasspathResourceLoader("")
     else
       throw new ResourceNotFoundException("Could not locate configuration. Current directory is: " + new File(".").getAbsolutePath)

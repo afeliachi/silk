@@ -23,8 +23,20 @@ function serializeLinkageRule() {
  */
 function serializeTransformRule() {
   var xml = serializeRule("TransformRule");
+  var xmlDoc = xml.ownerDocument;
+
   xml.setAttribute("name", $("#rulename").val());
-  xml.setAttribute("targetProperty", $("#targetproperty").val());
+  var mappingTarget = xmlDoc.createElement("MappingTarget");
+  mappingTarget.setAttribute("uri", $("#targetproperty").val());
+  var valueType = xmlDoc.createElement("ValueType");
+  valueType.setAttribute("nodeType", $("#targettype").val());
+  mappingTarget.appendChild(valueType);
+  xml.appendChild(mappingTarget);
+
+  // Add metadata
+  var metaDataXml = $.parseXML($("#rule-metadata").text());
+  xml.insertBefore(metaDataXml.documentElement, xml.firstChild);
+
   return makeXMLString(xml);
 }
 
@@ -145,12 +157,17 @@ function parseOperator(xmlDoc, elementId, connections) {
     }
   }
 
-  return {
-    xml: xml,
-    // For now we just select the type of the first child
-    // Todo verify for input trees that all do have the same input type
-    inputType: children[0].elType
-  };
+  if(children.length > 0) {
+    return {
+      xml: xml,
+      inputType: children[0].inputType // For now we just select the type of the first child
+    };
+  } else {
+    return {
+      xml: xml,
+      inputType: "Source"
+    };
+  }
 }
 
 /**
@@ -189,6 +206,6 @@ function findRootOperator(connections) {
  */
 function makeXMLString(xml) {
   var xmlString = (new XMLSerializer()).serializeToString(xml);
-  xmlString = xmlString.replace(/&amp;/g, "&");
+  console.log(xmlString);
   return xmlString;
 }

@@ -14,12 +14,13 @@
 
 package org.silkframework.learning.individual
 
-import org.silkframework.rule.input.{TransformInput, PathInput, Input}
+import org.silkframework.rule.input.{Input, PathInput, TransformInput}
+import org.silkframework.util.IdentifierGenerator
 
 trait InputNode extends Node {
   def isSource: Boolean
 
-  def build: Input
+  def build(implicit identifiers: IdentifierGenerator = new IdentifierGenerator): Input
 }
 
 object InputNode {

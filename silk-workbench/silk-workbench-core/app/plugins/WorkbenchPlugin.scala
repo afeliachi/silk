@@ -1,8 +1,10 @@
 package plugins
 
+import org.silkframework.config.TaskSpec
 import org.silkframework.workspace.Project
-import play.core.Router.Routes
+import play.api.routing.Router
 import plugins.WorkbenchPlugin.{Tab, TaskActions}
+
 import scala.reflect.ClassTag
 
 /**
@@ -10,12 +12,10 @@ import scala.reflect.ClassTag
  */
 trait WorkbenchPlugin {
 
-  def routes: Map[String, Routes] = Map.empty
-
   /**
    * The task types to be added to the Workspace.
    */
-  def tasks: Seq[TaskActions[_]] = Seq.empty
+  def tasks: Seq[TaskActions[_ <: TaskSpec]] = Seq.empty
 
   /**
    * Given a request context, lists the shown tabs.
@@ -29,7 +29,7 @@ object WorkbenchPlugin {
   /**
    * A new task in the Workspace
    */
-  abstract class TaskActions[T : ClassTag] {
+  abstract class TaskActions[T <: TaskSpec : ClassTag] {
 
     /** The name of the task type */
     def name: String
@@ -45,9 +45,6 @@ object WorkbenchPlugin {
 
     /** The path to redirect to when the task is opened. */
     def open(project: String, task: String): Option[String]
-
-    /**  The path to delete the task by sending a DELETE HTTP request. */
-    def delete(project: String, task: String): Option[String]
 
     /** Retrieves a list of properties as key-value pairs for this task to be displayed to the user. */
     def properties(taskData: Any): Seq[(String, String)]

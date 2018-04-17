@@ -23,15 +23,30 @@ import scala.collection.mutable
  */
 trait Observable[T] {
 
-  private val subscribers = new mutable.WeakHashMap[T => _, Unit]()
+  private val subscriberMap = new mutable.WeakHashMap[T => _, Unit]()
 
   @volatile
   private var updatePublished = false
 
   /**
+    * Checks if a value is defined.
+    */
+  def isDefined: Boolean = true
+
+  /**
    * Retrieves the current value.
    */
   def apply(): T
+
+  /**
+    * Retrieves the value as Option
+    */
+  def get: Option[T] = {
+    if(isDefined)
+      Some(apply())
+    else
+      None
+  }
 
   /**
    * True, if an update has been published.
@@ -45,7 +60,7 @@ trait Observable[T] {
    * @return The provided function
    */
   def onUpdate[U](f: T => U) = synchronized {
-    subscribers.update(f, Unit)
+    subscriberMap.update(f, Unit)
     f
   }
 
@@ -53,7 +68,14 @@ trait Observable[T] {
    * Removes a function from the subscribers list.
    */
   def removeSubscriptions() = synchronized {
-    subscribers.clear()
+    subscriberMap.clear()
+  }
+
+  /**
+    * Retrieves all subscribers.
+    */
+  def subscribers: Traversable[(T => _)] = synchronized {
+    subscriberMap.keys
   }
 
   /**
@@ -63,7 +85,7 @@ trait Observable[T] {
    */
   protected def publish(newValue: T) = {
     updatePublished = true
-    for(subscriber <- subscribers.keys)
+    for(subscriber <- subscriberMap.keys)
       subscriber(newValue)
   }
 }

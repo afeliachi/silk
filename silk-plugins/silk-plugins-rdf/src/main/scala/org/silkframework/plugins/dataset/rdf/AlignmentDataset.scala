@@ -1,19 +1,19 @@
 package org.silkframework.plugins.dataset.rdf
 
 import org.silkframework.dataset._
-import org.silkframework.plugins.dataset.rdf.formatters.{AlignmentLinkFormatter, FormattedEntitySink, FormattedLinkSink}
+import org.silkframework.plugins.dataset.rdf.formatters.{AlignmentLinkFormatter, FormattedLinkSink}
 import org.silkframework.runtime.plugin.{Param, Plugin}
 import org.silkframework.runtime.resource.WritableResource
 
 @Plugin(
   id = "alignment",
-  label = "Alignment",
+  label = "Alignment file",
   description =
     """ Writes the alignment format specified at http://alignapi.gforge.inria.fr/format.html."""
 )
 case class AlignmentDataset(
   @Param("File name inside the resources directory. In the Workbench, this is the '(projectDir)/resources' directory.")
-  file: WritableResource) extends DatasetPlugin {
+  file: WritableResource) extends Dataset with WritableResourceDataset {
 
   /**
    * Returns a data source for reading entities from the data set.
@@ -30,5 +30,7 @@ case class AlignmentDataset(
    */
   override def entitySink: EntitySink = ???
 
-  override def clear(): Unit = { }
+  override def replaceWritableResource(writableResource: WritableResource): WritableResourceDataset = {
+    this.copy(file = writableResource)
+  }
 }

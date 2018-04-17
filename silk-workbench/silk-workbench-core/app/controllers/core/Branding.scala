@@ -1,10 +1,10 @@
 package controllers.core
 
-import play.api.mvc.{Action, Controller}
 import config.WorkbenchConfig
+import play.api.mvc.{Action, Controller}
 import play.twirl.api.Html
 
-object Branding extends Controller {
+class Branding extends Controller {
 
   def logo = Action {
     val imgStream = WorkbenchConfig.get.logo.load
@@ -15,6 +15,11 @@ object Branding extends Controller {
   def aboutDialog = Action {
     val aboutHtml = Html(WorkbenchConfig.get.about.loadAsString)
     Ok(views.html.aboutDialog(aboutHtml))
+  }
+
+  def mdlStyle = Action {
+    val bytes = WorkbenchConfig.get.mdlStyle.get.loadAsBytes
+    Ok(bytes).as("text/css")
   }
 
 }

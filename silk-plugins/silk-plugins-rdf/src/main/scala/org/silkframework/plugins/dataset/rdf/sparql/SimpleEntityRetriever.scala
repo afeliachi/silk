@@ -14,15 +14,15 @@
 
 package org.silkframework.plugins.dataset.rdf.sparql
 
-import org.silkframework.dataset.rdf.{Resource, RdfNode, SparqlEndpoint}
+import org.silkframework.dataset.rdf.{RdfNode, Resource, SparqlEndpoint}
 import org.silkframework.entity.rdf.SparqlEntitySchema
-import org.silkframework.entity.{EntitySchema, Entity, Path}
+import org.silkframework.entity.{Entity, EntitySchema, Path}
 import org.silkframework.util.Uri
 
 /**
  * EntityRetriever which executes a single SPARQL query to retrieve the entities.
  */
-class SimpleEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, graphUri: Option[String] = None, useOrderBy: Boolean = true) extends EntityRetriever {
+class SimpleEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, graphUri: Option[String] = None, useOrderBy: Boolean = true, useSubSelect: Boolean = true) extends EntityRetriever {
   private val varPrefix = "v"
 
   /**
@@ -50,25 +50,31 @@ class SimpleEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, grap
     val sparqlEntitySchema = SparqlEntitySchema.fromSchema(entitySchema)
     //Select
     var sparql = "SELECT DISTINCT "
-    sparql += "?" + sparqlEntitySchema.variable + " "
+    var selectVariables = "?" + sparqlEntitySchema.variable + " "
     for (i <- sparqlEntitySchema.paths.indices) {
-      sparql += "?" + varPrefix + i + " "
+      selectVariables += "?" + varPrefix + i + " "
     }
+    sparql += selectVariables
     sparql += "\n"
-
-    //Graph
-    for (graph <- graphUri if !graph.isEmpty) sparql += "FROM <" + graph + ">\n"
 
     //Body
     sparql += "WHERE {\n"
+    //Graph
+    for (graph <- graphUri if !graph.isEmpty) sparql += "GRAPH <" + graph + "> {\n"
+
     if (!sparqlEntitySchema.restrictions.toSparql.isEmpty)
       sparql += sparqlEntitySchema.restrictions.toSparql + "\n"
     else
       sparql += "?" + sparqlEntitySchema.variable + " ?" + varPrefix + "_p ?" + varPrefix + "_o .\n"
 
     sparql += SparqlPathBuilder(sparqlEntitySchema.paths, "?" + sparqlEntitySchema.variable, "?" + varPrefix)
-    sparql += "}"
+    for (graph <- graphUri if !graph.isEmpty) sparql += "}\n" // END graph
+    sparql += "}" // END WHERE
     if(useOrderBy) sparql +=" ORDER BY ?" + sparqlEntitySchema.variable
+
+    if(useSubSelect) {
+      sparql = "SELECT " + selectVariables + "\nWHERE {\n" + sparql + "\n}"
+    }
 
     val sparqlResults = endpoint.select(sparql)
 
@@ -97,8 +103,8 @@ class SimpleEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, grap
   def retrieveEntity(entityUri: Uri, entitySchema: EntitySchema): Option[Entity] = {
     //Query only one path at once and combine the result into one
     val sparqlResults = {
-      for ((path, pathIndex) <- entitySchema.paths.zipWithIndex;
-           results <- retrievePaths(entitySchema, entityUri, Seq(path))) yield {
+      for ((path, pathIndex) <- entitySchema.typedPaths.zipWithIndex;
+           results <- retrievePaths(entitySchema, entityUri, Seq(path.path))) yield {
         results map {
           case (variable, node) => (varPrefix + pathIndex, node)
         }
@@ -116,12 +122,12 @@ class SimpleEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, grap
     }
     sparql += "\n"
 
-    //Graph
-    for (graph <- graphUri) sparql += "FROM <" + graph + ">\n"
-
     //Body
     sparql += "WHERE {\n"
+    //Graph
+    for (graph <- graphUri) sparql += "GRAPH <" + graph + "> {\n"
     sparql += SparqlPathBuilder(paths, "<" + entityUri + ">", "?" + varPrefix)
+    for (graph <- graphUri) sparql += "}\n"
     sparql += "}"
 
     endpoint.select(sparql).bindings
@@ -137,7 +143,7 @@ class SimpleEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, grap
       var curSubject: Option[String] = subject.map(_.uri)
 
       //Collect values of the current subject
-      var values = Array.fill(entitySchema.paths.size)(Seq[String]())
+      var values = Array.fill(entitySchema.typedPaths.size)(Seq[String]())
 
       // Count retrieved entities
       var counter = 0
@@ -160,7 +166,7 @@ class SimpleEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, grap
             }
 
             curSubject = resultSubject
-            values = Array.fill(entitySchema.paths.size)(Seq[String]())
+            values = Array.fill(entitySchema.typedPaths.size)(Seq[String]())
           }
         }
 

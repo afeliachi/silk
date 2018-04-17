@@ -1,26 +1,28 @@
 package org.silkframework.workspace.activity.linking
 
-import org.silkframework.config.LinkSpecification
-import org.silkframework.dataset.Dataset
 import org.silkframework.entity.EntitySchema
-import org.silkframework.entity.rdf.SparqlEntitySchema
+import org.silkframework.rule.{DatasetSelection, LinkSpec}
 import org.silkframework.runtime.activity.{Activity, ActivityContext}
-import org.silkframework.runtime.plugin.Plugin
 import org.silkframework.util.DPair
+import org.silkframework.workspace.ProjectTask
+import org.silkframework.workspace.activity.PathsCacheTrait
+import org.silkframework.workspace.activity.linking.LinkingTaskUtils._
 
 /**
  * Holds the most frequent paths.
  */
-class LinkingPathsCache(datasets: DPair[Dataset], linkSpec: LinkSpecification) extends Activity[DPair[EntitySchema]] {
+class LinkingPathsCache(task: ProjectTask[LinkSpec]) extends Activity[DPair[EntitySchema]] with PathsCacheTrait {
 
-  override def name = s"Paths cache ${linkSpec.id}"
+  private def linkSpec = task.data
 
-  override def initialValue = Some(DPair.fill(EntitySchema.empty))
+  override def name: String = s"Paths cache ${task.id}"
+
+  override def initialValue: Option[DPair[EntitySchema]] = Some(DPair.fill(EntitySchema.empty))
 
   /**
    * Loads the most frequent property paths.
    */
-  override def run(context: ActivityContext[DPair[EntitySchema]]) = {
+  override def run(context: ActivityContext[DPair[EntitySchema]]): Unit = {
     context.status.update("Retrieving frequent property paths", 0.0)
 
     //Create an entity description from the link specification
@@ -28,17 +30,25 @@ class LinkingPathsCache(datasets: DPair[Dataset], linkSpec: LinkSpecification) e
 
     //Check if the restriction has been changed
     val update =
-      (context.value().source.paths.isEmpty && context.value().target.paths.isEmpty) ||
+      (context.value().source.typedPaths.isEmpty && context.value().target.typedPaths.isEmpty) ||
       (currentEntityDescs.source.typeUri != context.value().source.typeUri &&
        currentEntityDescs.target.typeUri != context.value().target.typeUri)
 
+    // Update paths
     if (update) {
-      // Retrieve the data sources
-      val sources = datasets.map(_.source)
-      //Retrieve most frequent paths
-      val paths = for ((source, dataset) <- sources zip linkSpec.dataSelections) yield source.retrievePaths(dataset.typeUri, 1, Some(50))
-      //Add the frequent paths to the entity description
-      context.value() = for ((entityDesc, paths) <- currentEntityDescs zip paths) yield entityDesc.copy(paths = entityDesc.paths ++ paths.distinct)
+      val updatedSchemata =
+        for((dataSelection, entitySchema) <- linkSpec.dataSelections zip currentEntityDescs) yield {
+          val paths = retrievePaths(dataSelection)
+          entitySchema.copy(typedPaths = (entitySchema.typedPaths ++ paths.map(_.asStringTypedPath)).distinct)
+        }
+      context.value.update(updatedSchemata)
     }
+  }
+
+  private def retrievePaths(datasetSelection: DatasetSelection) = {
+    // Retrieve the data source
+    val source = task.dataSource(datasetSelection)
+    // Retrieve most frequent paths
+    source.retrievePaths(datasetSelection.typeUri, 1, Some(50))
   }
 }

@@ -2,8 +2,8 @@ package org.silkframework.learning
 
 import org.silkframework.learning.LinkageRuleLearner.Result
 import org.silkframework.learning.individual.Population
-import org.silkframework.evaluation.ReferenceEntities
 import org.silkframework.rule.LinkageRule
+import org.silkframework.rule.evaluation.ReferenceEntities
 import org.silkframework.runtime.activity.Activity
 
 trait LinkageRuleLearner {

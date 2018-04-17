@@ -1,34 +1,35 @@
-@(project: String, task: String)
-
-@import org.silkframework.dataset.DatasetPlugin
+@import org.silkframework.workspace.Project
 @import org.silkframework.dataset.Dataset
-@import org.silkframework.workspace.User
 
-@widgets.pluginDialog(name = task,
-                      plugins = DatasetPlugin.availablePlugins,
-                      currentObj = User().workspace.project(project).tasks[Dataset].find(_.name == task).map(_.data.plugin),
-                      resources = User().workspace.project(project).resources.list) {
+@(project: Project, datasetName: String, dataset: Option[Dataset], title: String = "Edit Dataset")
 
-  <script type="text/javascript">
-    function submit(pluginId, name, parameters) {
-      // Build dataset xml
-      var xml = '<Dataset id=\'' + name + '\'>';
-      xml += '  <DatasetPlugin type=\'' + pluginId + '\'>';
-      for(var i in parameters) {
-        xml += '    <Param name=\'' + parameters[i].name + '\' value=\'' + parameters[i].value + '\' />';
-      }
-      xml += '  </DatasetPlugin>';
-      xml += '</Dataset>';
+  @widgets.pluginDialog(
+    name = datasetName,
+    plugins = Dataset.availablePlugins,
+    currentObj = dataset,
+    resources = project.resources.listRecursive,
+    title = title,
+    submitLabel = "Save",
+    secondaryLabel = "Autoconfigure") {
 
-      // Delete the old dataset in case its name changed
-      if(!@task.isEmpty) {
-        if(name != '@task') {
-          deleteTask('@config.baseUrl/workspace/projects/@project/datasets/@task');
+    <script type="text/javascript">
+      function savePlugin(pluginId, name, parameters, callbacks) {
+        // Build dataset xml
+        var xml = '<Dataset id=\'' + name + '\' type=\'' + pluginId + '\'>';
+        for(var i in parameters) {
+          xml += '  <Param name=\'' + parameters[i].name + '\' value=\'' + parameters[i].value + '\' />';
         }
+        xml += '</Dataset>';
+
+        // Submit data source
+        putTask('@config.baseUrl/workspace/projects/@project.name/datasets/' + name, xml, callbacks);
       }
 
-      // Submit data source
-      putTask('@config.baseUrl/workspace/projects/@project/datasets/' + name, xml);
-    }
-  </script>
-}
+      function autoConfigure(pluginId, name, parameters) {
+        var queryString = $.param(parameters);
+        var path = '@config.baseUrl/workspace/dialogs/editDatasetAutoConfigured/@project.name/' + name + '/' + pluginId + '?' + queryString;
+        closeDialog();
+        showDialog(path);
+      }
+    </script>
+  }

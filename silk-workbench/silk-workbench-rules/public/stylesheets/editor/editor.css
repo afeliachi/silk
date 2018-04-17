@@ -18,6 +18,7 @@ body{
   background-color: #ffffff;
   border:1px dashed #d9d9d9;
   padding:5px;
+  width: 238px;
 }
 
 .wrapperEditor {
@@ -55,7 +56,7 @@ body{
   overflow: scroll;
   position: relative;
   background: url("../../img/editor/grid.png") repeat scroll 0 0;
-  border:1px dashed #d9d9d9;
+  border:1px solid #d9d9d9;
   margin-bottom: 8px;
 }
 
@@ -109,11 +110,11 @@ body{
   color: #1484d4;
 }
 
-._jsPlumb_endpoint {
+.jsplumb-endpoint {
   z-index: 2;
 }
 
-._jsPlumb_connector {
+.jsplumb-endpoint {
   cursor: pointer;
 }
 
@@ -138,15 +139,17 @@ body{
   cursor: move;
   padding: 4px;
   border-radius: 5px 5px 0 0;
+  margin-top: 0px;
+  margin-bottom: 0px;
 }
 
 .dragDiv .content {
-  min-height: 14px;
+  /*min-height: 14px;*/
   padding: 5px 10px 5px 5px;
-  border-radius: 0 0 5px 5px;
+  /*border-radius: 0 0 5px 5px;*/
   border-left:1px solid #aeaeae;
   border-right:1px solid #aeaeae;
-  border-bottom:1px solid #aeaeae;
+  /*border-bottom:1px solid #aeaeae;*/
 }
 
 .dragDiv .content input {
@@ -248,7 +251,6 @@ body{
 
 .scrollboxes {
   width: 230px;
-  height: 130px;
   overflow: auto;
   background: #fafafa;
   border: 1px dotted #c8c7c7;
@@ -266,9 +268,13 @@ body{
   border: 2px solid #f1d21e;
 }
 
-.highlighted {
-  border: 4px solid #ff0000;
+
+.editor-highlighted {
+  outline: 2px solid red;
+  opacity: 1;
+  -moz-outline-radius: 5px; // outline radius only supported in FF
 }
+
 
 .new-path {
   width: 165px;
@@ -317,6 +323,56 @@ body{
   line-height: 40px;
 }
 
+/* operator draggables */
+.non-breaking-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* operator box footer */
+
+.operator_footer {
+  text-align: right;
+  padding: 2px 5px 2px 5px;
+  font-size: 80%;
+  border-radius: 0 0 5px 5px;
+  background-color: rgb(100, 100, 100);
+  border: 1px solid;
+  border-top: 0;
+}
+
+.operator_footer:hover {
+  box-shadow: 0 0 0 ;
+}
+
+.operator_footer.sourceDiv {
+  background-color: rgb(242, 215, 255);
+  border-color: rgb(195, 84, 191);
+}
+
+.operator_footer.targetDiv {
+  background-color: rgb(255, 215, 215);
+  border-color: rgb(195, 84, 84);
+}
+
+.operator_footer.transformDiv {
+  background-color: rgb(214, 255, 240);
+  border-color: rgb(12, 196, 129);
+}
+
+.operator_footer.compareDiv {
+  background-color: rgb(255, 238, 214);
+  border-color: rgb(229, 152, 41);
+}
+
+.operator_footer.aggregateDiv {
+  background-color: rgb(214, 238, 255);
+  border-color: rgb(20, 132, 212);
+}
+
+
 /* label and value formatting */
 
 .param_element {
@@ -346,4 +402,22 @@ input.edit_label {
   display: none;
   border-width: 0px;
   margin: 0px;
+}
+
+/* operator search */
+#operatorSearchField {
+  margin-left: 10px;
+  width: 220px;
+}
+
+.operator-index {
+  display: none;
+}
+
+.search-invisible {
+  display: none;
+}
+
+#no_match_alert {
+  display: none;
 }

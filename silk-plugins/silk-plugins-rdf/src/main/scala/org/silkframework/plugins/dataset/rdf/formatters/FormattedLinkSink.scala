@@ -19,13 +19,11 @@ class FormattedLinkSink (resource: WritableResource, formatter: LinkFormatter) e
     case _ => None
   }
 
-  private var formattedLinkWriter: Either[BufferedWriter, (String) => Unit] = null
+  private var formattedLinkWriter: Writer = null
 
   private def write(s: String): Unit = {
     formattedLinkWriter match {
-      case Right(writeFN) =>
-        writeFN(s)
-      case Left(writer) =>
+      case writer: Writer =>
         writer.write(s)
       case _ =>
         log.warning("Not initialized!")
@@ -37,9 +35,9 @@ class FormattedLinkSink (resource: WritableResource, formatter: LinkFormatter) e
     formattedLinkWriter = javaFile match {
       case Some(file) =>
         file.getParentFile.mkdirs()
-        Left(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file), "UTF-8")))
+        new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, true), "UTF-8"))
       case None =>
-        Right(s => resource.write(s))
+        new StringWriter()
     }
     //Write header
     write(formatter.header)
@@ -52,11 +50,22 @@ class FormattedLinkSink (resource: WritableResource, formatter: LinkFormatter) e
   override def close() {
     write(formatter.footer)
     formattedLinkWriter match {
-      case Left(writer) =>
+      case writer: Writer =>
         writer.flush()
         writer.close()
+        if(writer.isInstanceOf[StringWriter]) {
+          resource.writeString(writer.asInstanceOf[StringWriter].toString, append = true)
+        }
       case _ =>
+        log.warning("Not initialized!")
         // Nothing to be done
     }
+  }
+
+  /**
+    * Makes sure that the next write will start from an empty dataset.
+    */
+  override def clear(): Unit = {
+    resource.delete()
   }
 }

@@ -14,7 +14,7 @@
 
 package models.linking
 
-import EvalLink.{LinkType, Correctness}
+import models.linking.EvalLink.{Correctness, LinkType}
 import org.silkframework.entity.Link
 import org.silkframework.rule.evaluation.DetailedLink
 
@@ -23,8 +23,8 @@ import org.silkframework.rule.evaluation.DetailedLink
  */
 class EvalLink(link: DetailedLink,
                val correct: Correctness,
-               val linkType: LinkType) extends DetailedLink(link.source, link.target, link.entities, link.details)
-{
+               val linkType: LinkType) extends DetailedLink(link.source, link.target, link.entities, link.details) {
+
   def this(link: Link, correct: Correctness, linkType: LinkType) = {
     this(new DetailedLink(link), correct, linkType)
   }
@@ -32,8 +32,8 @@ class EvalLink(link: DetailedLink,
   def updateCorrectness(correct: Correctness) = new EvalLink(this, correct, linkType)
 }
 
-object EvalLink
-{
+object EvalLink {
+
   /**
    * The correctness of a link
    */

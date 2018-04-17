@@ -2,20 +2,23 @@ package org.silkframework.runtime.plugin
 
 import java.io.File
 import java.net.{URL, URLClassLoader}
-import java.util.Map.Entry
 import java.util.ServiceLoader
 import java.util.logging.Logger
-import com.typesafe.config.ConfigValue
-import org.silkframework.config.Config
-import org.silkframework.runtime.resource.{ResourceManager, EmptyResourceManager, ResourceLoader}
+import javax.inject.Inject
+
+import org.silkframework.config.{Config, DefaultConfig, Prefixes}
+import org.silkframework.runtime.resource.{EmptyResourceManager, ResourceManager}
+
+import scala.collection.JavaConversions._
 import scala.collection.immutable.ListMap
 import scala.reflect.ClassTag
-import scala.collection.JavaConversions._
 
 /**
  * Registry of all available plugins.
  */
 object PluginRegistry {
+  @Inject
+  private var configMgr: Config = DefaultConfig.instance
 
   private val log = Logger.getLogger(getClass.getName)
   
@@ -32,11 +35,11 @@ object PluginRegistry {
    * @param id The id of the plugin.
    * @param params The instantiation parameters.
    * @param resources The resource loader for retrieving referenced resources.
-   * @tparam T The based type of the plugin.
+   * @tparam T The base type of the plugin.
    * @return A new instance of the plugin type with the given parameters.
    */
-  def create[T: ClassTag](id: String, params: Map[String, String] = Map.empty, resources: ResourceManager = EmptyResourceManager): T = {
-    pluginType[T].create[T](id, params, resources)
+  def create[T: ClassTag](id: String, params: Map[String, String] = Map.empty)(implicit prefixes: Prefixes, resources: ResourceManager): T = {
+    pluginType[T].create[T](id, params)
   }
 
   /**
@@ -46,7 +49,7 @@ object PluginRegistry {
    * @tparam T The type of the plugin.
    * @return The plugin instance.
    */
-  def createFromConfig[T: ClassTag](configPath: String): T = {
+  def createFromConfig[T: ClassTag](configPath: String)(implicit prefixes: Prefixes = Prefixes.empty, resources: ResourceManager = EmptyResourceManager): T = {
     createFromConfigOption[T](configPath) match {
       case Some(p) => p
       case None => throw new InvalidPluginException(s"Configuration property $configPath does not contain a plugin definition.")
@@ -60,11 +63,13 @@ object PluginRegistry {
     * @tparam T The type of the plugin.
     * @return The plugin instance, if the given config path is set.
     */
-  def createFromConfigOption[T: ClassTag](configPath: String): Option[T] = {
-    val config = Config().getConfig(configPath)
-    if(!config.hasPath("plugin")) {
+  def createFromConfigOption[T: ClassTag](configPath: String)
+                                         (implicit prefixes: Prefixes = Prefixes.empty,
+                                          resources: ResourceManager = EmptyResourceManager): Option[T] = {
+    if(!configMgr().hasPath(configPath + ".plugin")) {
       None
     } else {
+      val config = configMgr().getConfig(configPath)
       // Retrieve plugin id
       val pluginId = config.getString("plugin")
       // Check if there are any configuration parameters available for this plugin
@@ -84,7 +89,7 @@ object PluginRegistry {
     val desc = PluginDescription(pluginInstance.getClass)
     val parameters =
       for(param <- desc.parameters if param(pluginInstance) != null) yield
-        (param.name, param(pluginInstance).toString)
+        (param.name, param.stringValue(pluginInstance))
     (desc, parameters.toMap)
   }
 
@@ -93,6 +98,16 @@ object PluginRegistry {
    */
   def availablePlugins[T: ClassTag]: Seq[PluginDescription[T]] = {
     pluginType[T].availablePlugins.asInstanceOf[Seq[PluginDescription[T]]]
+  }
+
+  /**
+    * Returns a list of all available plugins of a specific runtime type.
+    */
+  def availablePluginsForClass(pluginClass: Class[_]): Seq[PluginDescription[_]] = {
+    pluginTypes.get(pluginClass.getName) match {
+      case Some(pluginType) => pluginType.availablePlugins
+      case None => Seq.empty
+    }
   }
 
   /**
@@ -105,12 +120,21 @@ object PluginRegistry {
   /**
    * Finds and registers all plugins in the classpath.
    */
-  def registerFromClasspath(): Unit = {
-    val loader = ServiceLoader.load(classOf[PluginModule])
-    val iter = loader.iterator()
-    while(iter.hasNext) {
-      iter.next().pluginClasses.foreach(registerPlugin)
-    }
+  def registerFromClasspath(classLoader: ClassLoader = Thread.currentThread.getContextClassLoader): Unit = {
+    // Load all plugin classes
+    val loader = ServiceLoader.load(classOf[PluginModule], classLoader)
+    val modules = loader.iterator().toList
+    val pluginClasses = for(module <- modules; pluginClass <- module.pluginClasses) yield pluginClass
+
+    // Create a plugin description for each plugin class (can be done in parallel)
+    val pluginDescs = for(pluginClass <- pluginClasses.par) yield PluginDescription(pluginClass)
+
+    // Register plugins (must currently be done sequentially as registerPlugin is not thread safe)
+    for(pluginDesc <- pluginDescs.seq)
+      registerPlugin(pluginDesc)
+
+    // Load modules
+    modules.foreach(_.load())
   }
 
   /**
@@ -130,7 +154,20 @@ object PluginRegistry {
     val loader = ServiceLoader.load(classOf[PluginModule], jarClassLoader)
     val iter = loader.iterator()
     while(iter.hasNext) {
-      iter.next().pluginClasses.foreach(registerPlugin)
+      val module = iter.next()
+      module.pluginClasses.foreach(registerPlugin)
+      module.load()
+    }
+  }
+
+  /**
+    * Registers a single plugin.
+    */
+  def registerPlugin(pluginDesc: PluginDescription[_]): Unit = {
+    for(superType <- getSuperTypes(pluginDesc.pluginClass)) {
+      val pluginType = pluginTypes.getOrElse(superType.getName, new PluginType)
+      pluginTypes += ((superType.getName, pluginType))
+      pluginType.register(pluginDesc)
     }
   }
 
@@ -138,11 +175,8 @@ object PluginRegistry {
    * Registers a single plugin.
    */
   def registerPlugin(implementingClass: Class[_]): Unit = {
-    for(superType <- getSuperTypes(implementingClass)) {
-      val pluginType = pluginTypes.getOrElse(superType.getName, new PluginType)
-      pluginTypes += ((superType.getName, pluginType))
-      pluginType.register(implementingClass)
-    }
+    val pluginDesc = PluginDescription(implementingClass)
+    registerPlugin(pluginDesc)
   }
 
   private def getSuperTypes(clazz: Class[_]): Set[Class[_]] = {
@@ -172,20 +206,19 @@ object PluginRegistry {
      * @param id The id of the plugin.
      * @param params The instantiation parameters.
      * @param resources The resource loader for retrieving referenced resources.
-     * @tparam T The based type of the plugin.
+     * @tparam T The base type of the plugin.
      * @return A new instance of the plugin type with the given parameters.
      */
-    def create[T: ClassTag](id: String, params: Map[String, String], resources: ResourceManager): T = {
+    def create[T: ClassTag](id: String, params: Map[String, String])(implicit prefixes: Prefixes, resources: ResourceManager): T = {
       val pluginClass = implicitly[ClassTag[T]].runtimeClass.getName
       val pluginDesc = plugins.getOrElse(id, throw new NoSuchElementException(s"No plugin '$id' found for class $pluginClass. Available plugins: ${plugins.keys.mkString(",")}"))
-      pluginDesc(params, resources).asInstanceOf[T]
+      pluginDesc(params).asInstanceOf[T]
     }
 
     /**
      * Registers a new plugin of this plugin type.
      */
-    def register(pluginClass: Class[_]): Unit = {
-      val pluginDesc = PluginDescription(pluginClass)
+    def register(pluginDesc: PluginDescription[_]): Unit = {
       plugins += ((pluginDesc.id, pluginDesc))
     }
 

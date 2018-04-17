@@ -5,7 +5,7 @@ import java.io._
 /**
  * A resource manager that loads files from a base directory.
  */
-class FileResourceManager(val baseDir: File) extends ResourceManager {
+case class FileResourceManager(baseDir: File) extends ResourceManager {
 
   val basePath = baseDir.getAbsolutePath
 
@@ -58,7 +58,8 @@ class FileResourceManager(val baseDir: File) extends ResourceManager {
       if (file.isDirectory) {
         file.listFiles.foreach(deleteRecursive)
       }
-      if (file.exists && !file.delete()) throw new IOException("Could not delete file " + file)
+      if (file.exists && !file.delete())
+        throw new IOException("Could not delete file " + file)
     }
     deleteRecursive(new File(baseDir + "/" + name))
   }

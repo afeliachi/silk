@@ -4,18 +4,21 @@
 @import org.silkframework.rule.similarity.Aggregation
 @import org.silkframework.rule.similarity.Comparison
 @import org.silkframework.rule.RuleTraverser
+@import org.silkframework.runtime.plugin.PluginDescription
+@import views.editor.GenerateId
+@import org.silkframework.workspace.Project
 
 @(rule: org.silkframework.rule.Operator,
-  prefixes: org.silkframework.config.Prefixes)
+  project: Project)
 
-@drawLevel(Seq(rule), (countLevels(rule) - 1) * 250, maxWidth(rule) * 150)
+@drawLevel(Seq(rule), (countLevels(rule) - 1) * 250, maxWidth(rule) * 200)
 
 @connectOperators(rule)
 
 @drawLevel(ops: Seq[Operator], x: Int, height: Int) = {
   @if(!ops.isEmpty) {
     @for((op, index) <- ops.zipWithIndex) {
-      @drawOperator(op, x, height * (index + 1) / (ops.size + 1) - 75)
+      @drawOperator(op, x + 20, height * (index + 1) / (ops.size + 1) - 80)
     }
     @drawLevel(ops.flatMap(getChildren), x - 250, height)
   }
@@ -55,18 +58,22 @@
 @drawOperator(op: Operator, x: Int, y: Int) = {
   @op match {
     case Aggregation(id, required, weight, aggregator, operators) => {
-      @aggregationBox(id, required, weight, aggregator.plugin, aggregator.parameters, x, y, true)
+      @aggregationBox(id, required, weight, aggregator.plugin, parameterValues(aggregator, aggregator.plugin), x, y, true, project)
     }
     case Comparison(id, required, weight, threshold, indexing, metric, inputs) => {
-      @comparisonBox(id, required, weight, threshold, metric.plugin, metric.parameters, x, y, true)
+      @comparisonBox(id, required, weight, threshold, metric.plugin, parameterValues(metric, metric.plugin), x, y, true, project)
     }
     case TransformInput(id, transformer, inputs) => {
-      @transformationBox(id, transformer.plugin, transformer.parameters, x, y, true)
+      @transformationBox(id, transformer.plugin, parameterValues(transformer, transformer.plugin), x, y, true, project)
     }
     case PathInput(id, path) => {
-      @pathBox(id, isSourceInput(op), path.serialize(prefixes), x, y, true)
+      @pathBox(id, isSourceInput(op), path.serialize(project.config.prefixes), x, y, true, project)
     }
   }
+}
+
+@parameterValues(plugin: AnyRef, pluginType: PluginDescription[_]) = @{
+  for(p <- pluginType.parameters) yield p.stringValue(plugin)
 }
 
 @**
@@ -91,9 +98,14 @@
 @connectOperators(op: Operator) = {
   <script type="text/javascript">
     // Initialization
-    $(function() {
+    jsPlumb.bind("ready", function() {
+      initEditor();
+
       var dropArea = $('#droppable');
-      jsPlumb.draggable(dropArea.find('.dragDiv')); //TODO move
+      jsPlumb.draggable(dropArea.find('.dragDiv'));
+      //jsPlumb.draggable(dropArea.find('.dragDiv'), {
+      //  containment: "parent"
+      //}); //TODO move
 
       jsPlumb.setSuspendEvents(true);
       jsPlumb.setSuspendDrawing(true);
@@ -102,7 +114,10 @@
 
       jsPlumb.setSuspendDrawing(false, true);
       jsPlumb.setSuspendEvents(false);
+
+      saveInstance();
     });
+
   </script>
 }
 
@@ -115,8 +130,8 @@
       }
 
       @* Create endpoints *@
-      var endpoint_@{id}_target = jsPlumb.addEndpoint('@id', endpointSimilarityTarget);
-      var endpoint_@{id}_source = jsPlumb.addEndpoint('@id', endpointSimilaritySource);
+      var endpoint_@{id}_target = jsPlumb.addEndpoint('@GenerateId(id,true)', endpointSimilarityTarget);
+      var endpoint_@{id}_source = jsPlumb.addEndpoint('@GenerateId(id,true)', endpointSimilaritySource);
 
       @* Connect children *@
       @for(op <- operators) {
@@ -132,8 +147,8 @@
       @connectOperator(inputs.target)
 
       @* Create endpoints *@
-      var endpoint_@{id}_target = jsPlumb.addEndpoint('@id', endpointValueTarget);
-      var endpoint_@{id}_source = jsPlumb.addEndpoint('@id', endpointSimilaritySource);
+      var endpoint_@{id}_target = jsPlumb.addEndpoint('@GenerateId(id,true)', endpointValueTarget);
+      var endpoint_@{id}_source = jsPlumb.addEndpoint('@GenerateId(id,true)', endpointSimilaritySource);
 
       @* Connect children *@
       jsPlumb.connect({
@@ -151,8 +166,8 @@
         @connectOperator(input)
       }
 
-      var endpoint_@{id}_target = jsPlumb.addEndpoint('@id', endpointValueTarget);
-      var endpoint_@{id}_source = jsPlumb.addEndpoint('@id', endpointValueSource);
+      var endpoint_@{id}_target = jsPlumb.addEndpoint('@GenerateId(id,true)', endpointValueTarget);
+      var endpoint_@{id}_source = jsPlumb.addEndpoint('@GenerateId(id,true)', endpointValueSource);
 
       @* Connect children *@
       @for(input <- inputs) {
@@ -163,7 +178,7 @@
       }
     }
     case PathInput(id, path) => {
-      var endpoint_@{id}_source = jsPlumb.addEndpoint('@id', endpointValueSource);
+      var endpoint_@{id}_source = jsPlumb.addEndpoint('@GenerateId(id,true)', endpointValueSource);
     }
   }
 }

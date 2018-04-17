@@ -2,7 +2,7 @@
 @import org.silkframework.workspace.activity.ProjectActivity
 @import org.silkframework.runtime.plugin.PluginDescription
 @import org.silkframework.workspace.activity.TaskActivityFactory
-
+@import scala.language.existentials
 @import org.silkframework.runtime.plugin.AnyPlugin
 
 @(activity: ProjectActivity)
@@ -14,9 +14,9 @@
     resources = Nil) {
 
   <script type="text/javascript">
-    function submit(pluginId, name, parameters) {
+    function savePlugin(pluginId, name, parameters) {
       $.post(
-        '@Html(routes.WorkspaceApi.postActivityConfig(activity.project.name, "", activity.name).url)',
+        '@Html(routes.ActivityApi.postActivityConfig(activity.project.name, "", activity.name).url)',
         parameters
       ).done(function() {
         closeDialog();

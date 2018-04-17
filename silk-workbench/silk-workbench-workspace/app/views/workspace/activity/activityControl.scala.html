@@ -1,29 +1,45 @@
 @import controllers.core.routes.Assets
-@import controllers.workspace.routes.WorkspaceApi
-@import controllers.workspace.routes.Workspace
+@import controllers.workspace.routes.ActivityApi
+@import controllers.workspace.routes.WorkspaceController
 
-@(project: String, task: Option[String], activity: String, showProgressBar: Boolean, showStartButton: Boolean, showConfigButton: Boolean)
+@(project: String, task: Option[String], activity: String, showProgressBar: Boolean, showStartButton: Boolean, showRestartButton: Boolean, showConfigButton: Boolean)
 
-<div id="@id(project, task.getOrElse(""), activity)" class="activity-control">
+<div id="@id("progress_")" class="activity-control">
 
   @if(showProgressBar) {
-    <div class="activity-progress">
+    <div id="@id("progressbar_")" class="activity-progress">
       <div class="activity-progress-text"></div>
       <img class="activity-progress-help" src="@Assets.at("img/help.png")"/>
+    </div>
+    <div class="mdl-tooltip" for="@id("progressbar_")">
     </div>
   }
 
   @if(showStartButton) {
-    <button name="start" class="activity-button" onclick="startActivity()" title="Start @activity" >Start</button>
-    <button name="stop" class="activity-button" onclick="stopActivity()" title="Stop @activity">Stop</button>
+    <button name="start" class="activity-button mdl-button mdl-js-button mdl-button--icon" onclick="startActivity()" title="Start @activity" >
+      <i class="material-icons">play_arrow</i>
+    </button>
+    <button name="stop" class="activity-button mdl-button mdl-js-button mdl-button--icon" onclick="stopActivity()" title="Stop @activity">
+      <i class="material-icons">stop</i>
+    </button>
+  }
+
+  @if(showRestartButton) {
+    <button name="reset" class="activity-button mdl-button mdl-js-button mdl-button--icon" onclick="restartActivity()" title="Reset @activity to its initial value and restart." >
+      <i class="material-icons">replay</i>
+    </button>
   }
 
   @if(showConfigButton && task.isDefined) {
-    <button name="config" class="activity-button" onclick="showDialog('@Workspace.taskActivityConfigDialog(project, task.get, activity)')" >Config</button>
+    <button name="config" class="activity-button mdl-button mdl-js-button mdl-button--icon" onclick="showDialog('@WorkspaceController.taskActivityConfigDialog(project, task.get, activity)')" >
+      <i class="material-icons">settings</i>
+    </button>
   }
 
   @if(showConfigButton && task.isEmpty) {
-    <button name="config" class="activity-button" onclick="showDialog('@Workspace.projectActivityConfigDialog(project, activity)')" >Config</button>
+    <button name="config" class="activity-button mdl-button mdl-js-button mdl-button--icon" onclick="showDialog('@WorkspaceController.projectActivityConfigDialog(project, activity)')" >
+      <i class="material-icons">settings</i>
+    </button>
   }
 
 </div>
@@ -33,6 +49,7 @@
     // Get control node
     var control = $(document.getElementById("progress_" + status.project + "_" + status.task + "_" + encodeURIComponent(status.activity).replace(/%20/g,'+')));
     var progressbar = control.children(".activity-progress");
+    var tooltip = control.children(".mdl-tooltip");
 
     // Initialize progress bar
     if(progressbar.find(".ui-progressbar-value").length == 0) {
@@ -45,7 +62,7 @@
     var progressbarHelp = progressbar.find(".activity-progress-help");
 
     // Update values
-    progressbar.attr('title', status.message);
+    tooltip.text(status.message);
     if(status.failed) {
       progressbar.progressbar("option", {value: 100});
       progressbarValue.css({
@@ -64,15 +81,17 @@
 
     // Enable/Disable start/stop buttons
     var startButton = control.children("button[name='start']");
+    var resetButton = control.children("button[name='reset']");
     var stopButton = control.children("button[name='stop']");
-    startButton.button("option", "disabled", status.isRunning);
-    stopButton.button("option", "disabled", !status.isRunning);
+    startButton.attr("disabled", status.isRunning);
+    resetButton.attr("disabled", status.isRunning);
+    stopButton.attr("disabled", !status.isRunning);
   }
 
   function startActivity() {
     $.ajax({
       type: 'POST',
-      url: '@Html(WorkspaceApi.startActivity(project, task.getOrElse(""), activity).url)',
+      url: '@Html(ActivityApi.startActivity(project, task.getOrElse(""), activity, blocking = false).url)',
       success: function(response) {
       },
       error: function(request) {
@@ -84,7 +103,7 @@
   function stopActivity() {
     $.ajax({
       type: 'POST',
-      url: '@Html(WorkspaceApi.cancelActivity(project, task.getOrElse(""), activity).url)',
+      url: '@Html(ActivityApi.cancelActivity(project, task.getOrElse(""), activity).url)',
       success: function(response) {
       },
       error: function(request) {
@@ -92,10 +111,28 @@
       }
     });
   }
+
+  function restartActivity() {
+    $.ajax({
+      type: 'POST',
+      url: '@Html(ActivityApi.restartActivity(project, task.getOrElse(""), activity).url)',
+      success: function(response) {
+      },
+      error: function(request) {
+        alert(request.responseText);
+      }
+    });
+  }
+
+  $( window ).load(function() {
+    setTimeout(function () {
+      $("#activity_control_wrapper").append('<iframe src="@ActivityApi.activityUpdates(project, task.getOrElse(""), activity)" style="display:none" frameborder="0" height="0" width="0">');
+    }, 1);
+  });
 </script>
 
-<iframe src="@WorkspaceApi.activityUpdates(project, task.getOrElse(""), activity)" style="display:none" frameborder="0" height="0" width="0"></iframe>
+<div id="activity_control_wrapper" style="display: none"/>
 
-@id(project: String, task: String, activity: String) = @{
-  "progress_" + project + "_" + task + "_" + helper.urlEncode(activity)
+@id(prefix: String) = @{
+  prefix + project + "_" + task.getOrElse("") + "_" + helper.urlEncode(activity)
 }

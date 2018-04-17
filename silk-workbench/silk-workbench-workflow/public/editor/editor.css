@@ -35,6 +35,8 @@
   background-color: #d6eeff;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.1) inset;
   border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Editor */
@@ -46,7 +48,7 @@
   overflow: scroll;
   position: relative;
   background: url("../img/grid.png") repeat scroll 0 0;
-  border:1px dashed #d9d9d9;
+  border:1px solid #d9d9d9;
   margin-bottom: 8px;
 }
 
@@ -86,11 +88,14 @@
 
 .operatorContent {
   min-height: 14px;
+  min-width: 180px;
   padding: 5px;
   border-radius: 0 0 5px 5px;
   border-left:1px solid #1484d4;
   border-right:1px solid #1484d4;
   border-bottom:1px solid #1484d4;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .operator:hover {
@@ -157,10 +162,10 @@
 
 /* jsPlump */
 
-._jsPlumb_endpoint {
+.jsplumb-endpoint {
   z-index: 2;
 }
 
-._jsPlumb_connector {
+.jsplumb-connector {
   cursor: pointer;
 }

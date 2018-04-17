@@ -14,18 +14,23 @@
 
 package org.silkframework.hadoop
 
-import impl.HadoopEntityCache
-import org.silkframework.config.LinkingConfig
-import org.silkframework.plugins.Plugins
-import org.apache.hadoop.fs.{FileSystem, Path}
-import java.util.logging.Logger
-import org.silkframework.config.LinkSpecification
-import org.silkframework.entity.Entity
-import org.silkframework.util.DPair
-import org.silkframework.plugins.dataset.JenaPlugins
-import org.silkframework.execution.Loader
 import java.io.File
+import java.util.logging.Logger
+
+import org.apache.hadoop.fs.{FileSystem, Path}
+import org.silkframework.rule.LinkSpec
+import org.silkframework.rule.execution.CacheLoader
 import org.silkframework.runtime.resource.FileResourceManager
+import org.silkframework.util.DPair
+
+import scala.xml.XML
+import org.silkframework.runtime.serialization.ReadContext
+import org.silkframework.rule.execution.CacheLoader
+import org.silkframework.hadoop.impl.HadoopEntityCache
+import org.silkframework.runtime.activity.{Activity, CombinedActivity}
+import org.silkframework.plugins.dataset.rdf.RdfPlugins
+import org.silkframework.config.Task
+import org.silkframework.rule.{LinkSpec, LinkingConfig}
 
 /**
  * Populates the entity cache.
@@ -36,9 +41,6 @@ class Load(silkConfigPath : String, entityCachePath : String, linkSpec : Option[
 
   def apply()
   {
-    Plugins.register()
-    JenaPlugins.register()
-
     val config = loadConfig(new Path(silkConfigPath), new Path(entityCachePath))
 
     val linkSpecs = linkSpec match
@@ -83,7 +85,7 @@ class Load(silkConfigPath : String, entityCachePath : String, linkSpec : Option[
     val resourceLoader = new FileResourceManager(new File(filePath.getParent.toUri))
     try
     {
-      LinkingConfig.load(resourceLoader)(stream)
+      LinkingConfig.LinkingConfigFormat.read(XML.load(stream))(new ReadContext(resourceLoader))
     }
     finally
     {
@@ -91,19 +93,21 @@ class Load(silkConfigPath : String, entityCachePath : String, linkSpec : Option[
     }
   }
 
-  private def write(config : LinkingConfig, linkSpec : LinkSpecification, entityCachePath : Path)
+  private def write(config : LinkingConfig, linkSpec : Task[LinkSpec], entityCachePath : Path)
   {
     val cacheFS = FileSystem.get(entityCachePath.toUri, hadoopConfig)
 
-    val sources = linkSpec.dataSelections.map(_.sourceId).map(config.source(_))
+    val sources = linkSpec.dataSelections.map(_.inputId).map(config.source(_)).map(_.source)
 
     val entityDesc = linkSpec.entityDescriptions
 
     val caches = DPair(
-      new HadoopEntityCache(entityDesc.source, linkSpec.rule.index(_), cacheFS, entityCachePath.suffix("/source/" + linkSpec.id + "/"), config.runtime),
-      new HadoopEntityCache(entityDesc.target, linkSpec.rule.index(_), cacheFS, entityCachePath.suffix("/target/" + linkSpec.id + "/"), config.runtime)
+      new HadoopEntityCache(entityDesc.source, linkSpec.rule.index(_, true), cacheFS, entityCachePath.suffix("/source/" + linkSpec.id + "/"), config.runtime),
+      new HadoopEntityCache(entityDesc.target, linkSpec.rule.index(_, false), cacheFS, entityCachePath.suffix("/target/" + linkSpec.id + "/"), config.runtime)
     )
-
-    new Loader(sources, caches)()
+    val combined = CombinedActivity("cacheLoader", new CacheLoader(sources.source, caches.source), new CacheLoader(sources.target, caches.target))
+    val controller = Activity.apply(combined)
+    controller.start()
+    controller.waitUntilFinished()
   }
 }

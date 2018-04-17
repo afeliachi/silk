@@ -1,10 +1,10 @@
 @import plugins.Context
-@import org.silkframework.config.LinkSpecification
 @import org.silkframework.learning.LearningActivity
 @import controllers.rules.routes.Assets
+@import org.silkframework.rule.LinkSpec
 @import views.html.workspace.activity.taskActivityControl
 
-@(context: Context[LinkSpecification])
+@(context: Context[LinkSpec])(implicit session: play.api.mvc.Session)
 
 @header = {
   <link type="text/css" href="@Assets.at("stylesheets/table.css")" rel="stylesheet" />
@@ -20,12 +20,12 @@
   <script type="text/javascript">
     function back() {
       //TODO stop current task
-      window.location = "@config.baseUrl/linking/@context.project.name/@context.task.name/learnStart"
+      window.location = "@config.baseUrl/linking/@context.project.name/@context.task.id/learnStart"
     }
 
     function next() {
       //TODO stop current task
-      window.location = "@config.baseUrl/linking/@context.project.name/@context.task.name/learn/population"
+      window.location = "@config.baseUrl/linking/@context.project.name/@context.task.id/learn/population"
     }
   </script>
 }
@@ -33,10 +33,10 @@
 @toolbar = {
   <ul>
     <li>
-      <button onclick="back()">Back</button>
+      <button class="mdl-button mdl-js-button mdl-button--raised" onclick="back()">Back</button>
     </li>
     <li>
-      <button onclick="next()">Next</button>
+      <button class="mdl-button mdl-js-button mdl-button--raised" onclick="next()">Next</button>
     </li>
     <li>
       @taskActivityControl(context.task.activity[LearningActivity])

@@ -1,7 +1,8 @@
 package org.silkframework.runtime.activity
 
-import java.net.URLEncoder
-import java.util.logging.{Logger, Level}
+import java.util.logging.{Level, Logger}
+
+import org.silkframework.runtime.activity.Status.Canceling
 
 /**
  * Holds the current status of an activity.
@@ -31,12 +32,17 @@ class StatusHolder(log: Logger = Logger.getLogger(getClass.getName),
    * Holds the current status.
    */
   @volatile
-  private var status: Status = Status.Idle
+  private var status: Status = Status.Idle()
 
   /**
    * Retrieves the current status.
    */
   override def apply(): Status = status
+
+  /**
+    * True, if canceling has been requested.
+    */
+  def isCanceling: Boolean = status.isInstanceOf[Canceling]
 
   /**
    * Updates the current status.
@@ -70,8 +76,8 @@ class StatusHolder(log: Logger = Logger.getLogger(getClass.getName),
    *
    * @param message The new status message
    */
-  def update(message: String) {
-    update(Status.Running(message, status.progress))
+  def updateMessage(message: String, logStatus: Boolean = true) {
+    update(Status.Running(message, status.progress), logStatus)
   }
 
   /**
@@ -79,8 +85,20 @@ class StatusHolder(log: Logger = Logger.getLogger(getClass.getName),
    *
    * @param progress The progress of the computation (A value between 0.0 and 1.0 inclusive).
    */
-  def update(progress: Double) {
-    update(Status.Running(status.message, progress))
+  def updateProgress(progress: Double, logStatus: Boolean = true) {
+    update(Status.Running(status.message, progress), logStatus)
+  }
+
+  /**
+    * Increases the progress.
+    *
+    * @param increase The amount by which the progress should be increased
+    */
+  def increaseProgress(increase: Double, logStatus: Boolean = true): Unit = {
+    val updatedStatus = synchronized {
+      Status.Running(status.message, status.progress + increase)
+    }
+    update(updatedStatus, logStatus)
   }
 
   /**

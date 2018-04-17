@@ -1,74 +1,95 @@
 package org.silkframework.workspace.activity.workflow
 
-import java.util.logging.Logger
+import org.silkframework.config.{Task, TaskSpec}
+import org.silkframework.dataset.Dataset
+import org.silkframework.entity.EntitySchema
+import org.silkframework.execution.{ExecutionReport, ExecutionType, ExecutorRegistry}
+import org.silkframework.runtime.activity.{Activity, ActivityContext, ActivityMonitor, Status}
+import org.silkframework.util.Identifier
+import org.silkframework.workspace.ProjectTask
 
-import org.silkframework.dataset._
-import org.silkframework.plugins.dataset.InternalDataset
-import org.silkframework.runtime.activity.{Activity, ActivityContext}
-import org.silkframework.workspace.Task
-import org.silkframework.workspace.activity.workflow.Workflow.WorkflowOperator
+import scala.collection.mutable
 
-class WorkflowExecutor(task: Task[Workflow]) extends Activity[Unit] {
+/**
+  * Created by robert on 9/21/2016.
+  */
+trait WorkflowExecutor[ExecType <: ExecutionType] extends Activity[WorkflowExecutionReport] {
 
-  val log = Logger.getLogger(getClass.getName)
+  /** Returns the workflow task */
+  protected def workflowTask: ProjectTask[Workflow]
 
-  @volatile
-  private var canceled = false
+  /** Returns a map of datasets that can replace variable datasets used as data sources in a workflow */
+  protected def replaceDataSources: Map[String, Dataset]
 
-  override def run(context: ActivityContext[Unit]) = {
-    canceled = false
-    val project = task.project
-    val operators = task.data.operators
-    val internalDataset = InternalDataset()
-    internalDataset.clear()
+  protected def executionContext: ExecType
 
-    // Clear all internal datasets used as output before writing
-    for(datasetId <- operators.flatMap(_.outputs).distinct;
-        dataset <- project.taskOption[Dataset](datasetId)
-        if dataset.data.plugin.isInstanceOf[InternalDataset]) {
-      dataset.data.clear()
+  /** Returns a map of datasets that can replace variable datasets used as data sinks in a workflow */
+  protected def replaceSinks: Map[String, Dataset]
+
+  protected def currentWorkflow = workflowTask.data
+
+  protected def project = workflowTask.project
+  protected def workflowNodes = currentWorkflow.nodes
+
+  protected def execute[TaskType <: TaskSpec](task: Task[TaskType],
+                                              inputs: Seq[ExecType#DataType],
+                                              outputSchema: Option[EntitySchema])
+                                             (implicit workflowRunContext: WorkflowRunContext): Option[ExecType#DataType] = {
+    ExecutorRegistry.execute(task, inputs, outputSchema, executionContext, workflowRunContext.taskContexts(task.id))
+  }
+
+  /** Return error if VariableDataset is used in output and input */
+  protected def checkVariableDatasets(): Unit = {
+    val variableDatasets = currentWorkflow.variableDatasets(project)
+    val notCoveredVariableDatasets = variableDatasets.dataSources.filter(!replaceDataSources.contains(_))
+    if (notCoveredVariableDatasets.nonEmpty) {
+      throw new scala.IllegalArgumentException("No replacement for following variable datasets as data sources provided: " +
+          notCoveredVariableDatasets.mkString(", "))
     }
-
-    // Preliminary: Just execute the operators from left to right
-    for((op, index) <- operators.sortBy(_.position.x).zipWithIndex if !canceled) {
-      context.status.update(s"${op.task} (${index + 1} / ${operators.size})", index.toDouble / operators.size)
-      executeOperator(op, internalDataset, context)
+    val notCoveredVariableSinks = variableDatasets.sinks.filter(!replaceSinks.contains(_))
+    if (notCoveredVariableSinks.nonEmpty) {
+      throw new scala.IllegalArgumentException("No replacement for following variable datasets as data sinks provided: " +
+          notCoveredVariableSinks.mkString(", "))
     }
   }
 
-  override def cancelExecution(): Unit = {
-    canceled = true
-  }
+  protected def workflow(implicit workflowRunContext: WorkflowRunContext): Workflow = workflowRunContext.workflow
 
-  def executeOperator(operator: WorkflowOperator, internalDataset: InternalDataset, context: ActivityContext[Unit]) = {
-    val project = task.project
+  case class WorkflowRunContext(activityContext: ActivityContext[WorkflowExecutionReport],
+                                workflow: Workflow,
+                                alreadyExecuted: mutable.Set[WorkflowNode] = mutable.Set()) {
 
-    // Get the data sources of this operator
-    // Either it reads the data from a dataset or directly from another operator in which case the internal data set is used.
-    val inputs = operator.inputs.map(project.anyTask(_).data)
-    val dataSources =
-      if(inputs.forall(_.isInstanceOf[Dataset]))
-        inputs.collect { case ds: Dataset => ds.source }
-      else
-        Seq(internalDataset.source)
+    /**
+      * Holds the execution reports for each task.
+      */
+    val taskContexts: Map[Identifier, ActivityContext[ExecutionReport]] = {
+      for(node <- workflow.nodes) yield {
+        val taskMonitor = new ActivityMonitor[ExecutionReport](node.task, Some(activityContext))
+        (node.task, taskMonitor)
+      }
+    }.toMap
 
-    // Get the sinks for this operator
-    val outputs = operator.outputs.map(project.anyTask(_).data)
-    var sinks: Seq[SinkTrait] = outputs.collect { case ds: Dataset => ds }
-
-    if(outputs.exists(!_.isInstanceOf[Dataset])) {
-      sinks +:= internalDataset
+    /**
+      * Listeners for updates to task reports.
+      * We need to hold them to prevent their garbage collection.
+      */
+    private val taskReportListeners = {
+      for((task, context) <- taskContexts) yield {
+        val listener = new TaskReportListener(task)
+        context.value.onUpdate(listener)
+        listener
+      }
     }
 
-    // Retrieve the task and its executor
-    val taskData = project.anyTask(operator.task).data
-    val taskExecutor = project.getExecutor(taskData)
-      .getOrElse(throw new Exception("Cannot execute task " + operator.task))
+    /**
+      * Updates the workflow execution report on each update of a task report.
+      */
+    private class TaskReportListener(task: Identifier) extends (ExecutionReport => Unit) {
+      def apply(report: ExecutionReport): Unit = activityContext.value.synchronized {
+        activityContext.value() = activityContext.value().withReport(task, report)
+      }
+    }
 
-    // Execute the task
-    val activity = taskExecutor(dataSources, taskData, sinks)
-    context.child(activity, 0.0).startBlocking()
-
-    log.info("Finished execution of " + operator.task)
   }
+
 }

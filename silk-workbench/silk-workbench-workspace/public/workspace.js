@@ -27,16 +27,20 @@ function importProject() {
   showDialog(baseUrl + '/workspace/dialogs/importproject');
 }
 
+function cloneProject(project) {
+  showDialog(baseUrl + '/workspace/dialogs/cloneProject?project=' + project);
+}
+
+function cloneTask(project, task) {
+  showDialog(baseUrl + '/workspace/dialogs/cloneTask?project=' + project + '&task=' + task);
+}
+
 function importLinkSpec(project) {
   showDialog(baseUrl + '/workspace/dialogs/importlinkspec/' + project);
 }
 
 function exportProject(project) {
   window.location = baseUrl + '/workspace/projects/' + project + '/export'
-}
-
-function deleteProject(project) {
-  deleteTaskConfirm(project, baseUrl + '/workspace/projects/' + project);
 }
 
 function executeProject(project) {
@@ -59,31 +63,42 @@ function reloadWorkspace() {
   });
 }
 
-function workspaceDialog(relativePath) {
-  showDialog(baseUrl + '/' + relativePath, reloadWorkspace);
+function reloadWorkspaceInBackend() {
+  $.post(baseUrl + '/workspace/reload', function(data) {
+    reloadWorkspace();
+  }).fail(function(request) {
+    alert("Error reloading workspace: " + request.responseText);
+  });
 }
 
-function putTask(path, xml) {
+function workspaceDialog(relativePath) {
+  showDialog(baseUrl + '/' + relativePath);
+}
+
+function putTask(path, xml, callbacks={
+    success: function() {} ,
+    error: function() {}
+  }) {
   $.ajax({
     type: 'PUT',
     url: path,
     contentType: 'text/xml',
     processData: false,
     data: xml,
-    success: function(data) {
-      $('.dialog').dialog('close');
-      reloadWorkspace();
-    },
     error: function(request) {
-      alert(request.responseText);
+      callbacks.error(JSON.parse(request.responseText).message);
+    },
+    success: function(request) {
+      reloadWorkspace();
+      callbacks.success();
     }
   });
 }
 
-function deleteTask(path) {
+function deleteProject(project, task) {
   $.ajax({
     type: 'DELETE',
-    url: path,
+    url: baseUrl + '/workspace/projects/' + project,
     success: function(data) {
       reloadWorkspace();
     },
@@ -93,30 +108,27 @@ function deleteTask(path) {
   });
 }
 
-function deleteTaskConfirm(name, path) {
-  var confirmDialog = document.createElement("div");
-  $(confirmDialog).attr("title",'Delete')
-      .attr("id",'dialog');
-  var dialogText = document.createElement("p");
-  $(dialogText).text("Delete resource: " + name);
-  $(confirmDialog).append(dialogText);
-
-  $("#content").append(confirmDialog);
-
-  $("#dialog").dialog({width: 400,
-    modal: true,
-    resizable: false,
-    buttons: {
-      "Yes, delete it": function() {
-        deleteTask(path);
-        $(this).dialog("close");
-      },
-      "Cancel": function() {
-        $(this).dialog("close");
-      }
+function deleteTask(project, task) {
+  $.ajax({
+    type: 'DELETE',
+    url: baseUrl + '/workspace/projects/' + project + '/tasks/' + task,
+    success: function(data) {
+      reloadWorkspace();
+    },
+    error: function(request) {
+      alert("Error deleting:" + request.responseText);
     }
   });
+}
 
+function deleteProjectConfirm(project, task) {
+  showDialog(baseUrl + '/workspace/dialogs/removeproject/' + project);
+}
 
+function deleteTaskConfirm(project, task) {
+  showDialog(baseUrl + '/workspace/dialogs/removetask/' + project + '/' + task);
+}
 
+function deleteResourceConfirm(name, path) {
+  showDialog(baseUrl + '/workspace/dialogs/removeresource/' + name + "?path=" + encodeURIComponent(path), "secondary");
 }

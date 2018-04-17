@@ -1,13 +1,12 @@
 package org.silkframework.dataset
 
 import org.silkframework.entity.{Entity, EntitySchema, Link}
-import org.silkframework.entity.rdf.SparqlEntitySchema
 import org.silkframework.util.Uri
 
 /**
  * An empty data set.
  */
-private object EmptyDataset extends DatasetPlugin {
+private object EmptyDataset extends Dataset {
 
   /**
     * Clears the contents of this dataset.
@@ -33,9 +32,15 @@ private object EmptyDataset extends DatasetPlugin {
      *
      * @param properties The list of properties of the entities to be written.
      */
-    override def open(properties: Seq[String]): Unit = {}
+    override def open(typeUri: Uri, properties: Seq[TypedProperty]): Unit = {}
 
     override def close(): Unit = {}
+
+    /**
+      * Makes sure that the next write will start from an empty dataset.
+      * Does nothing as this dataset is always empty
+      */
+    override def clear(): Unit = {}
   }
 
   /**
@@ -53,5 +58,11 @@ private object EmptyDataset extends DatasetPlugin {
     override def writeLink(link: Link, predicateUri: String): Unit = {}
 
     override def close(): Unit = {}
+
+    /**
+      * Makes sure that the next write will start from an empty dataset.
+      * Does nothing as this dataset is always empty
+      */
+    override def clear(): Unit = {}
   }
 }

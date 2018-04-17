@@ -17,16 +17,17 @@ package org.silkframework.workspace
 import java.io._
 import java.util.logging.Logger
 
-import org.silkframework.runtime.resource.{EmptyResourceManager, ResourceLoader}
 import org.silkframework.util.Identifier
+import org.silkframework.workspace.resources.ResourceRepository
 
-class Workspace(val provider: WorkspaceProvider) {
+class Workspace(val provider: WorkspaceProvider, val repository: ResourceRepository) {
 
   private val logger = Logger.getLogger(classOf[Workspace].getName)
 
-  private var cacbedProjects = loadProjects()
+  @volatile
+  private var cachedProjects = loadProjects()
 
-  def projects: Seq[Project] = cacbedProjects
+  def projects: Seq[Project] = cachedProjects
 
   /**
    * Retrieves a project by name.
@@ -34,41 +35,97 @@ class Workspace(val provider: WorkspaceProvider) {
    * @throws java.util.NoSuchElementException If no project with the given name has been found
    */
   def project(name: Identifier): Project = {
-    projects.find(_.name == name).getOrElse(throw new NoSuchElementException("Project '" + name + "' not found"))
+    findProject(name).getOrElse(throw new ProjectNotFoundException(name))
   }
 
-  def createProject(name: Identifier) = {
-    require(!cacbedProjects.exists(_.name == name), "A project with the name '" + name + "' already exists")
+  private def findProject(name: Identifier): Option[Project] = {
+    projects.find(_.name == name)
+  }
 
-    val projectConfig = ProjectConfig(name)
-    provider.putProject(projectConfig)
-    val newProject = new Project(projectConfig, provider)
-    cacbedProjects :+= newProject
+  def createProject(config: ProjectConfig): Project = {
+    require(!cachedProjects.exists(_.name == config.id), "A project with the name '" + config.id + "' already exists")
+
+    provider.putProject(config)
+    val newProject = new Project(config, provider, repository.get(config.id))
+    cachedProjects :+= newProject
     newProject
   }
 
-  def removeProject(name: Identifier) = {
+  def removeProject(name: Identifier): Unit = {
+    project(name).activities.foreach(_.control.cancel())
     provider.deleteProject(name)
-    cacbedProjects = cacbedProjects.filterNot(_.name == name)
+    cachedProjects = cachedProjects.filterNot(_.name == name)
   }
 
-  def exportProject(name: Identifier, outputStream: OutputStream): String = {
-    provider.exportProject(name, outputStream)
+  /**
+    * Generic export method that marshals the project as implemented in the given [[ProjectMarshallingTrait]] object.
+    *
+    * @param name project name
+    * @param outputStream the output stream to write the exported project to.
+    * @param marshaller object that defines how the project should be marshaled.
+    * @return
+    */
+  def exportProject(name: Identifier, outputStream: OutputStream, marshaller: ProjectMarshallingTrait): String = {
+    marshaller.marshal(project(name).config, outputStream, provider, repository.get(name))
   }
 
-  def importProject(name: Identifier, inputStream: InputStream, resources: ResourceLoader = EmptyResourceManager) {
-    provider.importProject(name, inputStream, resources)
-    reload()
+  /**
+    * Generic project import method that unmarshals the project as implemented in the given [[ProjectMarshallingTrait]] object.
+    *
+    * @param name project name
+    * @param inputStream the input stream to read the project to import from
+    * @param marshaller object that defines how the project should be unmarshaled.
+    */
+  def importProject(name: Identifier,
+                    inputStream: InputStream,
+                    marshaller: ProjectMarshallingTrait) {
+    findProject(name) match {
+      case Some(_) =>
+        throw new IllegalArgumentException("Project " + name.toString + " does already exist!")
+      case None =>
+        marshaller.unmarshalAndImport(name, provider, repository.get(name), inputStream)
+        reload()
+    }
   }
 
+  /**
+    * Flushes this workspace. i.e., all task data is written to the workspace provider immediately.
+    * It is usually not needed to call this method, as task data is written to the workspace provider after a fixed interval without changes.
+    * This method forces the writing and returns after all data has been written.
+    */
+  def flush(): Unit = {
+    for {
+      project <- projects
+      task <- project.allTasks
+    } {
+      task.flush()
+    }
+  }
+
+  /**
+    * Reloads this workspace.
+    */
   def reload() {
-    cacbedProjects = loadProjects()
+    // Write all data
+    flush()
+    // Stop all activities
+    for{ project <- projects
+         activity <- project.activities } {
+      activity.control.cancel()
+    }
+    // Refresh workspace provider
+    provider match {
+      case refreshableProvider: RefreshableWorkspaceProvider => refreshableProvider.refresh()
+      case _ => // Do nothing
+    }
+    // Reload projects
+    cachedProjects = loadProjects()
   }
 
   private def loadProjects(): Seq[Project] = {
     for(projectConfig <- provider.readProjects()) yield {
       logger.info("Loading project: " + projectConfig.id)
-      new Project(projectConfig, provider)
+      new Project(projectConfig, provider, repository.get(projectConfig.id))
     }
   }
 }

@@ -1,251 +1,31 @@
-@import org.silkframework.entity.ForwardOperator
-
 @import plugins.Context
-@import org.silkframework.config.TransformSpecification
-@import org.silkframework.rule.TransformRule
-@import org.silkframework.rule.input.PathInput
-@import org.silkframework.entity.Path
-@import org.silkframework.workspace.activity.transform.TransformPathsCache
-@import controllers.rules.routes.Assets
-@import org.silkframework.rule.{DirectMapping, TypeMapping, UriMapping, ObjectMapping}
-@import org.silkframework.rule.ComplexMapping
-@import org.silkframework.runtime.serialization.Serialization
+@import org.silkframework.rule.{TransformSpec}
+@import controllers.core.routes.{Assets => CoreAssets}
+@import org.silkframework.rule.vocab.Vocabularies
 
-@(context: Context[TransformSpecification])
+@(context: Context[TransformSpec], vocabularies: Vocabularies, rule: String)(implicit session: play.api.mvc.Session)
 
 @header = {
-  <link type="text/css" href="@Assets.at("stylesheets/editor/transformRules.css")" rel="stylesheet" />
-  <link type="text/css" href="@Assets.at("stylesheets/editor/status.css")" rel="stylesheet" />
-
-  <script type="text/javascript" src="@Assets.at("js/editor/transformRules.js")"></script>
-  <script type="text/javascript" src="@Assets.at("js/editor/status.js")"></script>
-  <script type="text/javascript">
-    var apiUrl = '@config.baseUrl/transform/tasks/@context.project.name/@context.task.name';
-  </script>
-}
-
-@toolbar = {
-  <script type="text/javascript" src="@Assets.at("js/wz_tooltip.js")"></script>
-
-  <ul>
-    <li>
-      <button onclick="addRule('#uriMappingTemplate')">Add URI Mapping</button>
-    </li>
-    <li>
-      <button onclick="addRule('#typeMappingTemplate')">Add Type Mapping</button>
-    </li>
-    <li>
-      <button onclick="addRule('#directMappingTemplate')">Add Direct Mapping</button>
-    </li>
-    <li>
-      <button onclick="addRule('#objectMappingTemplate')">Add Object Mapping</button>
-    </li>
-    <li>
-      @* widgets.taskActivityControl(context, context.task.activity[PathsCache].name) *@
-    </li>
-  </ul>
-
-  @status()
+  <script type="text/javascript" src="@CoreAssets.at("libs/silk-react-components/main.js")"></script>
 }
 
 @content = {
-  <div id="ruleContainer">
-    @for(rule <- context.task.data.rules) {
-      @renderRule(rule)
-    }
-  </div>
+  <div id="react-hierarchicalMapping"></div>
 
-  <div id="uriMappingTemplate" style="display: none">
-    @renderRule(UriMapping())
-  </div>
+  <script type="text/javascript">
 
-  <div id="typeMappingTemplate" style="display: none">
-    @renderRule(TypeMapping())
-  </div>
+    HierarchicalMapping(
+        'react-hierarchicalMapping',
+        {
+            baseUrl: '@config.baseUrl',
+            project: '@context.project.name',
+            transformTask: '@context.task.id',
+            initialRule: '@rule'
+        }
+    );
 
-  <div id="directMappingTemplate" style="display: none">
-  @renderRule(DirectMapping())
-  </div>
+  </script>
 
-  <div id="objectMappingTemplate" style="display: none">
-  @renderRule(ObjectMapping())
-  </div>
-
-  <div id="dialogDelete" title="Confirm">
-    <p>
-      <span class="ui-icon ui-icon-alert" style="float:left; margin:0 7px 20px 0;"></span>
-      Delete transformation rule?
-    </p>
-  </div>
 }
 
-@renderRule(rule: TransformRule) = @{ rule match {
-  case r: DirectMapping => renderDirectRule(r)
-  case r: UriMapping => renderUriRule(r)
-  case r: ObjectMapping => renderObjectRule(r)
-  case r: TypeMapping => renderTypeRule(r)
-  case r: ComplexMapping => renderComplexRule(r)
-}}
-
-@renderDirectRule(rule: DirectMapping) = {
-  <div class="transformRule directMapping">
-    <div class="ruleTitle">
-      Direct Mapping
-      @renderRuleButtons()
-    </div>
-    <div class="ruleContents">
-      <table style="width:100%">
-        <tr>
-          <th>Name</th>
-          <th>Source Path</th>
-          <th>Target Property</th>
-        </tr>
-        <tr>
-          <td>
-            <input class="name" value="@rule.name" size="16" style="width:100%" />
-          </td>
-          <td>
-            <input class="source" value="@rule.sourcePath.serializeSimplified(prefixes())" style="width:100%" />
-          </td>
-          <td style="padding-right: 10px">
-            <input class="target" value="@rule.targetProperty.serialize(prefixes())" style="width:100%" />
-          </td>
-        </tr>
-      </table>
-    </div>
-    <script class="ruleXML" type="application/xml">
-      @Serialization.toXml[TransformRule](rule)
-    </script>
-  </div>
-}
-
-@renderUriRule(rule: UriMapping) = {
-  <div class="transformRule uriMapping">
-    <div class="ruleTitle">
-      URI Mapping
-      @renderRuleButtons()
-    </div>
-    <div class="ruleContents">
-      <table style="width:100%">
-        <tr>
-          <th>Name</th>
-          <th>Pattern</th>
-        </tr>
-        <tr>
-          <td>
-            <input class="name" value="@rule.name" size="16" style="width:100%" />
-          </td>
-          <td style="padding-right: 10px">
-            <input class="pattern" value="@rule.pattern" size="45" style="width:100%" />
-          </td>
-        </tr>
-      </table>
-    </div>
-    <script class="ruleXML" type="application/xml">
-      @Serialization.toXml[TransformRule](rule)
-    </script>
-  </div>
-}
-
-@renderObjectRule(rule: ObjectMapping) = {
-  <div class="transformRule objectMapping">
-    <div class="ruleTitle">
-      Object Mapping
-      @renderRuleButtons()
-    </div>
-    <div class="ruleContents">
-      <table style="width:100%">
-        <tr>
-          <th>Name</th>
-          <th>Pattern</th>
-          <th>Target</th>
-        </tr>
-        <tr>
-          <td>
-            <input class="name" value="@rule.name" size="16" style="width:100%" />
-          </td>
-          <td>
-            <input class="pattern" value="@rule.pattern" style="width:100%" />
-          </td>
-          <td style="padding-right: 10px">
-            <input class="target" value="@rule.targetProperty.serialize(prefixes())" style="width:100%" />
-          </td>
-        </tr>
-      </table>
-    </div>
-    <script class="ruleXML" type="application/xml">
-      @Serialization.toXml[TransformRule](rule)
-    </script>
-  </div>
-}
-
-@renderTypeRule(rule: TypeMapping) = {
-  <div class="transformRule typeMapping">
-    <div class="ruleTitle">
-      Type Mapping
-      @renderRuleButtons()
-    </div>
-    <div class="ruleContents">
-      <table style="width:100%">
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-        </tr>
-        <tr>
-          <td>
-            <input class="name" value="@rule.name" size="16" style="width:100%" />
-          </td>
-          <td style="padding-right: 10px">
-            <input class="type" value="@rule.typeUri" size="45" style="width:100%" />
-          </td>
-        </tr>
-      </table>
-    </div>
-    <script class="ruleXML" type="application/xml">
-      @Serialization.toXml[TransformRule](rule)
-    </script>
-  </div>
-}
-
-@renderComplexRule(rule: ComplexMapping) = {
-  <div class="transformRule complexMapping">
-    <div class="ruleTitle">
-      Complex Mapping
-      @renderRuleButtons()
-    </div>
-    <div class="ruleContents">
-      <table style="width:100%">
-        <tr>
-          <th>Name</th>
-          <th>Source Path</th>
-          <th>Target Property</th>
-        </tr>
-        <tr>
-          <td>
-            <input class="name" value="@rule.name" size="16" style="width:100%" />
-          </td>
-          <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="@renderRulePath(rule)">
-            @renderRulePath(rule)
-          </td>
-          <td style="padding-right: 10px">
-            <input class="target" value="@rule.target.map(_.serialize(prefixes())).getOrElse("")" style="width:100%" />
-          </td>
-        </tr>
-      </table>
-    </div>
-    <script class="ruleXML" type="application/xml">
-      @Serialization.toXml[TransformRule](rule)
-    </script>
-  </div>
-}
-
-@renderRuleButtons() = {
-  <img class="button-delete" title="Delete" onclick="deleteRule($(this).parent().parent())" src="@Assets.at("img/delete.png")" style="float: right; cursor: pointer" />
-  <img class="button-edit" title="Open in Editor" onclick="openRule($(this).parent().parent().find('.name').val())" src="@Assets.at("img/editor/wrench.png")" style="float:right; cursor: pointer" />
-}
-
-@renderRulePath(rule: ComplexMapping) = {@if(rule.paths.size == 1) {@rule.paths.head.serializeSimplified(prefixes())} else {(multiple)}}
-
-@prefixes() = @{ context.project.config.prefixes }
-
-@main(Some(context))(header)(toolbar)(content)
+@main(Some(context))(header)(null)(content)

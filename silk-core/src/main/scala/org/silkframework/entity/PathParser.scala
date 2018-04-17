@@ -14,12 +14,12 @@
 
 package org.silkframework.entity
 
-import org.silkframework.runtime.serialization.ValidationException
-
-import util.parsing.input.CharSequenceReader
-import util.parsing.combinator.RegexParsers
-import org.silkframework.util.Uri
 import org.silkframework.config.Prefixes
+import org.silkframework.runtime.validation.ValidationException
+import org.silkframework.util.Uri
+
+import scala.util.parsing.combinator.RegexParsers
+import scala.util.parsing.input.CharSequenceReader
 
 /**
  * Parser for the Silk RDF path language.
@@ -61,8 +61,8 @@ private class PathParser(prefixes: Prefixes) extends RegexParsers {
 
   private def filterOperator = "[" ~> (langFilter | propFilter) <~ "]"
 
-  private def langFilter = "@lang" ~> compOperator ~ identifier ^^ {
-    case op ~ lang => LanguageFilter(op, lang)
+  private def langFilter = "@lang" ~> compOperator ~ "'" ~ languageTag ~ "'" ^^ {
+    case op ~ _ ~ lang ~ _ => LanguageFilter(op, lang)
   }
 
   private def propFilter = identifier ~ compOperator ~ value ^^ {
@@ -75,6 +75,9 @@ private class PathParser(prefixes: Prefixes) extends RegexParsers {
 
   // An identifier that is either a URI enclosed in angle brackets (e.g., <URI>) or a plain identifier (e.g., name or prefix:name)
   private def identifier = """<[^>]+>|[^\\/\[\]<>=!" ]+""".r
+
+  // A language tag according to the Sparql spec
+  private def languageTag = """[a-zA-Z]+('-'[a-zA-Z0-9]+)*""".r
 
   // A value that is either an identifier or a literal value enclosed in quotes (e.g., "literal").
   private def value = identifier | "\"[^\"]+\"".r

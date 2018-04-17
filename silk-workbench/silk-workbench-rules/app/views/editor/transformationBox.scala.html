@@ -1,6 +1,9 @@
+@import org.silkframework.workspace.Project
+
 @(id: String,
   plugin: org.silkframework.runtime.plugin.PluginDescription[_],
-  parameters: Map[String, String],
-  x: Int, y: Int, display: Boolean)
+  parameterValues: Seq[String],
+  x: Int, y: Int, display: Boolean,
+  project: Project)
 
-@operatorBox("Transform", id, plugin, parameters, x, y, display) { }
+@operatorBox("Transform", id, plugin, parameterValues, x, y, display, project) { }

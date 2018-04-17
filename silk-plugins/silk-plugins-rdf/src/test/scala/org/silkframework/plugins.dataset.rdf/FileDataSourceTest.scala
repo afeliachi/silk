@@ -15,11 +15,11 @@
 package org.silkframework.plugins.dataset.rdf
 
 import java.io.File
+import java.net.URLDecoder
 
 import org.scalatest.{FlatSpec, Matchers}
 import org.silkframework.config.Prefixes
 import org.silkframework.entity.{EntitySchema, Path}
-import org.silkframework.entity.rdf.{SparqlEntitySchema, SparqlRestriction}
 import org.silkframework.runtime.resource.FileResourceManager
 import org.silkframework.util.Uri
 
@@ -33,14 +33,14 @@ class FileDataSourceTest extends FlatSpec with Matchers {
 
   val fileName = "test.nt"
 
-  val resourceLoader = new FileResourceManager(new File(getClass.getClassLoader.getResource("org/silkframework/plugins/dataset/rdf").getFile))
+  val resourceLoader = new FileResourceManager(new File(URLDecoder.decode(getClass.getClassLoader.getResource("org/silkframework/plugins/dataset/rdf").getFile, "UTF-8")))
 
   val dataset = new FileDataset(resourceLoader.get(fileName), "N-TRIPLE")
 
   val entityDescCity =
     EntitySchema(
       typeUri = Uri("http://dbpedia.org/ontology/City"),
-      paths = IndexedSeq(Path.parse("?a/rdfs:label"))
+      typedPaths = IndexedSeq(Path.parse("?a/rdfs:label").asStringTypedPath)
     )
 
   "FileDataSource" should "return all cities" in {
@@ -60,7 +60,7 @@ class FileDataSourceTest extends FlatSpec with Matchers {
   val entityDescPerson =
     EntitySchema(
       typeUri = Uri("http://dbpedia.org/ontology/Person"),
-      paths = IndexedSeq(pathPlaces, pathPlacesCalledMunich, pathCities)
+      typedPaths = IndexedSeq(pathPlaces, pathPlacesCalledMunich, pathCities).map(_.asStringTypedPath)
     )
 
   val persons = dataset.source.retrieve(entityDescPerson).toList

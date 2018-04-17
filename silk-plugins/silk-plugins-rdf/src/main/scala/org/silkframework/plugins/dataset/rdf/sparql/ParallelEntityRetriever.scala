@@ -16,9 +16,10 @@ package org.silkframework.plugins.dataset.rdf.sparql
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.logging.{Level, Logger}
+
 import org.silkframework.dataset.rdf.{RdfNode, Resource, SparqlEndpoint}
 import org.silkframework.entity.rdf.SparqlEntitySchema
-import org.silkframework.entity.{EntitySchema, Entity, Path}
+import org.silkframework.entity.{Entity, EntitySchema, Path}
 import org.silkframework.util.Uri
 
 /**
@@ -42,7 +43,7 @@ class ParallelEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, gr
    */
   override def retrieve(entitySchema: EntitySchema, entities: Seq[Uri], limit: Option[Int]): Traversable[Entity] = {
     canceled = false
-    if(entitySchema.paths.size <= 1)
+    if(entitySchema.typedPaths.size <= 1)
       new SimpleEntityRetriever(endpoint, pageSize, graphUri, useOrderBy).retrieve(entitySchema, entities, limit)
     else
       new EntityTraversable(entitySchema, entities, limit)
@@ -56,7 +57,7 @@ class ParallelEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, gr
       var inconsistentOrder = false
       var counter = 0
 
-      val pathRetrievers = for (path <- entitySchema.paths) yield new PathRetriever(entityUris, SparqlEntitySchema.fromSchema(entitySchema), path)
+      val pathRetrievers = for (path <- entitySchema.typedPaths) yield new PathRetriever(entityUris, SparqlEntitySchema.fromSchema(entitySchema), path.path)
 
       pathRetrievers.foreach(_.start())
 
@@ -155,11 +156,11 @@ class ParallelEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, gr
       }
       sparql += "?" + varPrefix + "0\n"
 
-      //Graph
-      for (graph <- graphUri if !graph.isEmpty) sparql += "FROM <" + graph + ">\n"
-
       //Body
       sparql += "WHERE {\n"
+      //Graph
+      for (graph <- graphUri if !graph.isEmpty) sparql += "GRAPH <" + graph + "> {\n"
+
       fixedSubject match {
         case Some(subjectUri) => {
           sparql += SparqlPathBuilder(path :: Nil, "<" + subjectUri + ">", "?" + varPrefix)
@@ -172,7 +173,8 @@ class ParallelEntityRetriever(endpoint: SparqlEndpoint, pageSize: Int = 1000, gr
           sparql += SparqlPathBuilder(path :: Nil, "?" + entityDesc.variable, "?" + varPrefix)
         }
       }
-      sparql += "}"
+      for (graph <- graphUri if !graph.isEmpty) sparql += "}\n"
+      sparql += "}" // END WHERE
 
       if (useOrderBy && fixedSubject.isEmpty) {
         sparql += " ORDER BY " + "?" + entityDesc.variable

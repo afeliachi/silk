@@ -4,8 +4,9 @@
 @import plugins.WorkbenchPlugin.TaskActions
 @import org.silkframework.runtime.plugin.PluginRegistry
 @import controllers.workspace.routes.Assets
+@import org.silkframework.config.TaskSpec
 @import org.silkframework.workspace.Workspace
-@import org.silkframework.workspace.Task
+@import org.silkframework.workspace.ProjectTask
 
 @(workspace: Workspace)
 
@@ -27,10 +28,10 @@
 </div>
 
 @project(project: Project) = {
-  <li id="project_@project.name" >
+  <li id="project_@project.name" data-jstree='{"icon":"@Assets.at(projectIcon(project))"}' title="@project.loadingErrors.mkString(", ")" >
     @project.name
     @button("Prefixes", "Edit prefixes", "wrench-screwdriver.png", s"editPrefixes('${project.name}')")
-    @button("Resources", "Manager resources", "wrench.png", s"editResources('${project.name}')")
+    @button("Resources", "Manage resources", "wrench.png", s"editResources('${project.name}')")
     @for(plugin <- WorkbenchPlugins();
          taskActions <- plugin.tasks;
          path <- taskActions.createDialog(project.name)) {
@@ -41,7 +42,8 @@
     @if(PluginRegistry.availablePlugins[ProjectExecutor].nonEmpty) {
       @button("Execute", "Execute project", "document-export.png", s"executeProject('${project.name}')")
     }
-    @button("Remove", "Remove project", "cross.png", s"deleteProject('${project.name}')")
+    @button("Clone", "Clone project", "clone.png", s"cloneProject('${project.name}')")
+    @button("Remove", "Remove project", "cross.png", s"deleteProjectConfirm('${project.name}')")
     <ul>
       @for(plugin <- WorkbenchPlugins();
            taskActions <- plugin.tasks;
@@ -52,18 +54,24 @@
   </li>
 }
 
-@task(project: Project, task: Task[_], taskActions: TaskActions[_]) = {
-  <li id="task_@{project.name}_@task.name" data-jstree='{"icon":"@Assets.at(taskActions.icon)"}'>
-    @task.name
-    @for(path <- taskActions.propertiesDialog(project.name, task.name)) {
+@projectIcon(project: Project) = @{
+  if(project.loadingErrors.isEmpty)
+    "img/project.png"
+  else
+   "img/project-error.png"
+}
+
+@task(project: Project, task: ProjectTask[_ <: TaskSpec], taskActions: TaskActions[_ <: TaskSpec]) = {
+  <li id="task_@{project.name}_@task.id" data-jstree='{"icon":"@taskActions.icon"}'>
+    @task.id
+    @for(path <- taskActions.propertiesDialog(project.name, task.id)) {
       @button("Properties", "Edit task properties", "wrench.png", s"workspaceDialog('$path')")
     }
-    @for(path <- taskActions.open(project.name, task.name)) {
+    @for(path <- taskActions.open(project.name, task.id)) {
       @button("Open", "Open task", "document--pencil.png", s"window.location = '${config.baseUrl}/$path'")
     }
-    @for(path <- taskActions.delete(project.name, task.name)) {
-      @button("Remove", "Remove task", "cross.png", s"deleteTaskConfirm('${task.name}', '${config.baseUrl}/$path')")
-    }
+    @button("Clone", "Clone task", "clone.png", s"cloneTask('${project.name}', '${task.id}')")
+    @button("Remove", "Remove task", "cross.png", s"deleteTaskConfirm('${project.name}', '${task.id}')")
     <ul>
       @for((key, value) <- taskActions.properties(task.data) if !value.isEmpty) {
         <li data-jstree='{"icon":"@Assets.at("img/file-tag.png")"}'>

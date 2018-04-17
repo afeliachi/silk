@@ -48,28 +48,33 @@ sealed trait Status {
   /**
    * True, if the task succeeded.
    */
-  def succeeded = !isRunning && !failed
+  def succeeded: Boolean = !isRunning && !failed
+
+  /**
+    * The timestamp when the status has been updated.
+    */
+  val timestamp = System.currentTimeMillis()
 
   /**
    * The complete status message including the progress (if running).
    */
-  override def toString = message
+  override def toString: String = message
 }
 
 object Status {
   /**
    * Status which indicates that the task has not been started yet.
    */
-  object Idle extends Status {
-    def message = "Idle"
+  case class Idle() extends Status {
+    def message: String = "Idle"
   }
   
   /**
    * Status which indicates that the task has been started.
    */
   case class Started() extends Status {
-    override def message = "Started"
-    override def isRunning = true
+    override def message: String = "Started"
+    override def isRunning: Boolean = true
   }
   
   /**
@@ -79,12 +84,13 @@ object Status {
    * @param progress The progress of the computation (A value between 0.0 and 1.0 inclusive).
    */
   case class Running(message: String, override val progress: Double) extends Status {
-    override def isRunning = true
-    override def toString = {
-      if(progress != 0.0)
+    override def isRunning: Boolean = true
+    override def toString: String = {
+      if(progress != 0.0) {
         message + " (" + "%3.1f".format(progress * 100.0) + "%)"
-      else
+      } else {
         message
+      }
     }
   }
   
@@ -94,32 +100,33 @@ object Status {
    * @param progress The progress of the computation (A value between 0.0 and 1.0 inclusive).
    */
   case class Canceling(override val progress: Double) extends Status {
-    override def message = "Stopping..."
-    override def isRunning = true
+    override def message: String = "Stopping..."
+    override def isRunning: Boolean = true
   }
   
   /**
    * Status which indicates that the task has finished execution.
    *
    * @param success True, if the computation finished successfully. False, otherwise.
-   * @param time The time in milliseconds needed to execute the task.
+   * @param runtime The time in milliseconds needed to execute the task.
    * @param exception The exception, if the task failed.
    */
-  case class Finished(success: Boolean, time: Long, exception: Option[Throwable] = None) extends Status {
-    override def message = exception match {
+  case class Finished(success: Boolean, runtime: Long, exception: Option[Throwable] = None) extends Status {
+    override def message: String = exception match {
       case None => "Finished in " + formattedTime
       case Some(ex) => "Failed after " + formattedTime + ": " + ex.getMessage
     }
-  
+
     private def formattedTime = {
-      if (time < 1000)
-        time + "ms"
-      else
-        (time / 1000) + "s"
+      if (runtime < 1000) {
+        runtime + "ms"
+      } else {
+        "%.3fs".format(runtime.toDouble / 1000)
+      }
     }
   
-    override def progress = 1.0
+    override def progress: Double = 1.0
   
-    override def failed = !success
+    override def failed: Boolean = !success
   }
 }

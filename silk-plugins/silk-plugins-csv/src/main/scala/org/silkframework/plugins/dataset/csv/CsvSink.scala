@@ -1,37 +1,34 @@
 package org.silkframework.plugins.dataset.csv
 
-import java.io.{BufferedWriter, FileOutputStream, OutputStreamWriter, Writer}
+import org.silkframework.dataset.{DataSink, TypedProperty}
+import org.silkframework.runtime.resource.WritableResource
+import org.silkframework.util.Uri
 
-import org.silkframework.dataset.DataSink
-import org.silkframework.entity.Link
-import org.silkframework.runtime.resource.{FileResource, Resource}
-
-class CsvSink(file: Resource, settings: CsvSettings) extends DataSink {
-
-  private val javaFile = file match {
-    case f: FileResource => f.file
-    case _ => throw new IllegalArgumentException("Can only write to files, but got a resource of type " + file.getClass)
-  }
+class CsvSink(resource: WritableResource, settings: CsvSettings) extends DataSink {
 
   @volatile
-  private var out: Writer = null
+  private var writerOpt: Option[CsvWriter] = None
 
-  def write(s: String): Unit = {
-    out.write(s)
+  def open(typeUri: Uri, properties: Seq[TypedProperty] = Seq.empty) {
+    writerOpt = Some(new CsvWriter(resource, properties, settings))
   }
 
-  def open(properties: Seq[String] = Seq.empty) {
-    //Create buffered writer
-    out = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(javaFile), "UTF-8"))
-    //Write header
-    if(properties.nonEmpty)
-      out.write(properties.mkString(settings.separator.toString) + "\n")
+  def write(values: Seq[String]): Unit = {
+    writerOpt match {
+      case Some(writer) => writer.writeLine(values)
+      case None => throw new IllegalStateException("Tried to write to CSV Sink that has not been opened.")
+    }
   }
 
   def close() {
-    if (out != null) {
-      out.close()
-      out = null
+    for(writer <- writerOpt) {
+      writer.close()
     }
+    writerOpt = None
   }
+
+  /**
+    * Makes sure that the next write will start from an empty dataset.
+    */
+  override def clear(): Unit = resource.delete()
 }

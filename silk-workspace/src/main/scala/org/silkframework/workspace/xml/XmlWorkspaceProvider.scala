@@ -1,21 +1,23 @@
 package org.silkframework.workspace.xml
 
-import java.io._
-import java.util.zip.{ZipEntry, ZipInputStream, ZipOutputStream}
+import java.util.logging.{Level, Logger}
 
-import org.silkframework.config.Prefixes
-import org.silkframework.runtime.resource.{ResourceLoader, ResourceManager}
+import org.silkframework.config._
+import org.silkframework.runtime.resource.ResourceManager
 import org.silkframework.util.Identifier
 import org.silkframework.util.XMLUtils._
-import org.silkframework.workspace.{ProjectConfig, WorkspaceProvider}
+import org.silkframework.workspace.{ProjectConfig, RefreshableWorkspaceProvider, WorkspaceProvider}
 
 import scala.reflect.ClassTag
+import scala.util.control.NonFatal
 import scala.xml.XML
 
 /**
   * Holds all projects in a xml-based file structure.
   */
-class XmlWorkspaceProvider(res: ResourceManager) extends WorkspaceProvider {
+class XmlWorkspaceProvider(val resources: ResourceManager) extends WorkspaceProvider with RefreshableWorkspaceProvider {
+
+  private val log = Logger.getLogger(classOf[XmlWorkspaceProvider].getName)
 
   @volatile
   private var plugins = Map[Class[_], XmlSerializer[_]]()
@@ -25,113 +27,74 @@ class XmlWorkspaceProvider(res: ResourceManager) extends WorkspaceProvider {
   registerModule(new LinkingXmlSerializer())
   registerModule(new TransformXmlSerializer())
   registerModule(new WorkflowXmlSerializer())
+  registerModule(new CustomTaskXmlSerializer())
 
-  def registerModule[T: ClassTag](plugin: XmlSerializer[T]) = {
+  private def registerModule[T <: TaskSpec : ClassTag](plugin: XmlSerializer[T]) = {
     val clazz = implicitly[ClassTag[T]].runtimeClass
     plugins += (clazz -> plugin)
   }
 
   override def readProjects(): Seq[ProjectConfig] = {
-    for(projectName <- res.listChildren) yield {
-      val configXML = XML.load(res.child(projectName).get("config.xml").load)
+    resources.listChildren.flatMap(loadProject)
+  }
+
+  private def loadProject(projectName: String): Option[ProjectConfig] = {
+    try {
+      val configXML = XML.load(resources.child(projectName).get("config.xml").load)
       val prefixes = Prefixes.fromXML((configXML \ "Prefixes").head)
-      ProjectConfig(projectName, prefixes)
+      val resourceURI = (configXML \ "@resourceUri").headOption.map(_.text.trim)
+      Some(ProjectConfig(projectName, prefixes, resourceURI))
+    } catch {
+      case NonFatal(ex) =>
+        log.log(Level.WARNING, s"Could not load project $projectName", ex)
+        None
     }
   }
 
   override def putProject(config: ProjectConfig): Unit = {
+    val uri = config.resourceUriOrElseDefaultUri
     val configXMl =
-      <ProjectConfig>
+      <ProjectConfig resourceUri={uri}>
         { config.prefixes.toXML }
       </ProjectConfig>
-    res.child(config.id).get("config.xml").write { os => configXMl.write(os) }
+    resources.child(config.id).get("config.xml").write(){ os => configXMl.write(os) }
   }
 
   override def deleteProject(name: Identifier): Unit = {
-    res.delete(name)
-  }
-
-  /**
-    * Retrieves the project resources (e.g. associated files).
-    */
-  override def projectResources(name: Identifier): ResourceManager = {
-    res.child(name).child("resources")
+    resources.delete(name)
   }
 
   /**
     * Retrieves the project cache folder.
     */
   def projectCache(name: Identifier): ResourceManager = {
-    res.child(name)
+    resources.child(name)
   }
 
-  override def readTasks[T: ClassTag](project: Identifier): Seq[(Identifier, T)] = {
-    plugin[T].loadTasks(res.child(project).child(plugin[T].prefix), res.child(project).child("resources")).toSeq
+  override def readTasks[T <: TaskSpec : ClassTag](project: Identifier, projectResources: ResourceManager): Seq[Task[T]] = {
+    plugin[T].loadTasks(resources.child(project).child(plugin[T].prefix), projectResources)
   }
 
-  override def putTask[T: ClassTag](project: Identifier, task: Identifier, data: T): Unit = {
-    plugin[T].writeTask(data, res.child(project).child(plugin[T].prefix))
+  override def putTask[T <: TaskSpec : ClassTag](project: Identifier, task: Task[T]): Unit = {
+    plugin[T].writeTask(task, resources.child(project).child(plugin[T].prefix))
   }
 
-  override def deleteTask[T: ClassTag](project: Identifier, task: Identifier): Unit = {
-    plugin[T].removeTask(task, res.child(project).child(plugin[T].prefix))
+  override def deleteTask[T <: TaskSpec : ClassTag](project: Identifier, task: Identifier): Unit = {
+    plugin[T].removeTask(task, resources.child(project).child(plugin[T].prefix))
   }
 
-  override def exportProject(project: Identifier, outputStream: OutputStream): String = {
-    require(res.listChildren.contains(project.toString), s"Project $project does not exist.")
-
-    // Open ZIP
-    val zip = new ZipOutputStream(outputStream)
-
-    // Go through all files and create a ZIP entry for each
-    putResources(res.child(project), "")
-
-    def putResources(loader: ResourceLoader, basePath: String): Unit = {
-      for(resName <- loader.list) {
-        zip.putNextEntry(new ZipEntry(basePath + resName))
-        zip.write(loader.get(resName).loadAsBytes)
-      }
-      for(childName <- loader.listChildren) {
-        putResources(loader.child(childName), basePath + childName + "/")
-      }
-    }
-
-    // Close ZIP
-    zip.close()
-
-    //Return proposed file name
-    project.toString + ".zip"
+  private def plugin[T <: TaskSpec : ClassTag] = {
+    val taskClass = implicitly[ClassTag[T]].runtimeClass
+    plugins.find(_._1.isAssignableFrom(taskClass))
+      .getOrElse(throw new RuntimeException("No plugin available for class " + taskClass))
+      ._2.asInstanceOf[XmlSerializer[T]]
   }
 
-  override def importProject(project: Identifier, inputStream: InputStream, resources: ResourceLoader): Unit = {
-    require(!res.listChildren.contains(project.toString), s"Project $project already exists.")
-
-    // Open ZIP
-    val zip = new ZipInputStream(inputStream)
-
-    // Read all ZIP entries
-    try {
-      val projectRes = res.child(project)
-      var entry = zip.getNextEntry
-      while (entry != null) {
-        if (!entry.isDirectory) {
-          projectRes.getInPath(entry.getName).write(zip)
-        }
-        zip.closeEntry()
-        entry = zip.getNextEntry
-      }
-    } catch {
-      case ex: Throwable =>
-        // Something failed. Delete already written project resources and escalate exception.
-        res.delete(project)
-        throw ex;
-    }
-
-    // Close ZIP and reload
-    zip.close()
-  }
-
-  private def plugin[T: ClassTag] = {
-    plugins(implicitly[ClassTag[T]].runtimeClass).asInstanceOf[XmlSerializer[T]]
+  /**
+    * Refreshes all projects, i.e. cleans all possible caches if there are any and reloads all projects freshly.
+    */
+  override def refresh(): Unit = {
+    // No refresh needed, all tasks are read from the file system on every read. Nothing is cached
+    // This is implemented to avoid warnings on project imports.
   }
 }
